@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI):
 
     logger.info("=" * 60)
     logger.info("  Engineering Oracle — Backend Ready")
-    logger.info(f"  OpenRouter base: {settings.openrouter_base_url}")
+    logger.info(f"  Groq base: {settings.groq_base_url}")
     logger.info(f"  Reasoning model: {settings.model_reasoning}")
     logger.info(f"  Synthesis model: {settings.model_synthesis}")
     logger.info(f"  Refiner model:   {settings.model_refiner}")

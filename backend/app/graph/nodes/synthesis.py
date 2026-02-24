@@ -1,4 +1,4 @@
-"""Node 6 — Synthesis: Llama 3.3 70B generates a structured Markdown report."""
+"""Node 6 — Synthesis: Groq-hosted LLM generates a structured Markdown report."""
 
 from __future__ import annotations
 
@@ -131,12 +131,12 @@ Include all citations as numbered references.
         )
     )
 
-    # ── Call Llama 3.3 70B via OpenRouter ─────────────────────────────
+    # ── Call synthesis model via Groq ─────────────────────────────────
     from openai import OpenAI
 
     client = OpenAI(
-        base_url=settings.openrouter_base_url,
-        api_key=settings.openrouter_api_key,
+        base_url=settings.groq_base_url,
+        api_key=settings.groq_api_key,
     )
 
     try:

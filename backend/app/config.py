@@ -18,14 +18,14 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # ── OpenRouter ────────────────────────────────────────────────────
-    openrouter_api_key: str = ""
-    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    # ── Groq Cloud ────────────────────────────────────────────────────
+    groq_api_key: str = ""
+    groq_base_url: str = "https://api.groq.com/openai/v1"
 
-    # Model identifiers (free tier)
-    model_reasoning: str = "moonshotai/mimo-v2-flash:free"
-    model_synthesis: str = "meta-llama/llama-3.3-70b-instruct:free"
-    model_refiner: str = "google/gemini-2.0-flash-exp:free"
+    # Model identifiers (Groq Cloud)
+    model_reasoning: str = "llama-3.1-8b-instant"
+    model_synthesis: str = "llama-3.3-70b-versatile"
+    model_refiner: str = "gemma2-9b-it"
 
     # ── Tavily ────────────────────────────────────────────────────────
     tavily_api_key: str = ""

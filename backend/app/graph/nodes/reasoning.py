@@ -1,4 +1,4 @@
-"""Node 4 — Reasoning: MiMo V2 Flash analyses engineering data for metrics."""
+"""Node 4 — Reasoning: Groq-hosted LLM analyses engineering data for metrics."""
 
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ Output your analysis as structured Markdown with clear section headers.
 
 def reasoning_node(state: OracleState) -> dict:
     """
-    Use MiMo V2 Flash via OpenRouter to analyze the collected and chunked data.
+    Use Groq-hosted LLM to analyze the collected and chunked data.
 
     Retrieves the most relevant chunks from ChromaDB, feeds them as context,
     and requests a structured technical analysis.
@@ -99,7 +99,7 @@ Perform a thorough technical analysis of the above sources in relation to the qu
 Follow the analysis framework in your system instructions.
 """
 
-    # ── Call MiMo V2 Flash via OpenRouter ─────────────────────────────
+    # ── Call reasoning model via Groq ─────────────────────────────────
     thoughts.append(
         ThoughtEvent(
             node=NodeName.REASONING,
@@ -111,8 +111,8 @@ Follow the analysis framework in your system instructions.
     from openai import OpenAI
 
     client = OpenAI(
-        base_url=settings.openrouter_base_url,
-        api_key=settings.openrouter_api_key,
+        base_url=settings.groq_base_url,
+        api_key=settings.groq_api_key,
     )
 
     try:
