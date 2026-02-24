@@ -1,0 +1,10 @@
+{
+  "pythonVersion": "3.13",
+  "pythonPlatform": "Windows",
+  "venvPath": "C:\\Users\\venka\\AppData\\Local\\Programs\\Python\\Python313",
+  "executionEnvironments": [
+    {
+      "root": "."
+    }
+  ]
+}
