@@ -34,9 +34,7 @@ export async function streamChat(
   callbacks: SSECallbacks,
   signal?: AbortSignal
 ): Promise<void> {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
-
-  const response = await fetch(`${apiUrl}/api/chat`, {
+  const response = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query, stream: true }),
