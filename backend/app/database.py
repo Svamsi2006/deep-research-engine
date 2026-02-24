@@ -1,40 +1,98 @@
-"""SQLAlchemy models and database setup for report persistence."""
+"""SQLAlchemy models and database setup for the Deep Research Platform."""
 
 from __future__ import annotations
 
 import json
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Float, Integer, String, Text, create_engine
+from sqlalchemy import Column, DateTime, Float, Integer, String, Text, ForeignKey
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, sessionmaker, relationship
 
 
 class Base(DeclarativeBase):
     pass
 
 
+# ---------------------------------------------------------------------------
+# Models
+# ---------------------------------------------------------------------------
+
+
+class Source(Base):
+    """An ingested source document (PDF, URL, or GitHub repo)."""
+    __tablename__ = "sources"
+
+    id = Column(String, primary_key=True)
+    source_type = Column(String, nullable=False)  # "pdf", "url", "github"
+    origin = Column(String, nullable=False)         # URL or filename
+    title = Column(String, default="")
+    raw_text = Column(Text, default="")
+    char_count = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    chunks = relationship("ChunkRow", back_populates="source", cascade="all, delete-orphan")
+
+
+class ChunkRow(Base):
+    """A text chunk from a source, used for BM25 retrieval."""
+    __tablename__ = "chunks"
+
+    id = Column(String, primary_key=True)
+    source_id = Column(String, ForeignKey("sources.id"), nullable=False, index=True)
+    content = Column(Text, nullable=False)
+    chunk_index = Column(Integer, default=0)
+    section_heading = Column(String, default="")
+    char_count = Column(Integer, default=0)
+
+    source = relationship("Source", back_populates="chunks")
+
+
 class ReportRow(Base):
+    """A generated research report."""
     __tablename__ = "reports"
 
     id = Column(String, primary_key=True)
-    query = Column(String, nullable=False, index=True)
-    report = Column(Text, default="")
+    question = Column(String, nullable=False, index=True)
+    report_md = Column(Text, default="")
+    sources_json = Column(Text, default="[]")
+    flashcards_json = Column(Text, default="[]")
     evaluation_score = Column(Float, default=0.0)
-    retry_count = Column(Integer, default=0)
-    thought_trace_json = Column(Text, default="[]")
+    pipeline_log_json = Column(Text, default="[]")
     created_at = Column(DateTime, default=datetime.utcnow)
 
     @property
-    def thought_trace(self) -> list[dict]:
+    def sources_used(self) -> list[dict]:
         try:
-            return json.loads(self.thought_trace_json)
+            return json.loads(self.sources_json)
         except Exception:
             return []
 
-    @thought_trace.setter
-    def thought_trace(self, value: list[dict]):
-        self.thought_trace_json = json.dumps(value, default=str)
+    @sources_used.setter
+    def sources_used(self, value: list[dict]):
+        self.sources_json = json.dumps(value, default=str)
+
+    @property
+    def flashcards(self) -> list[dict]:
+        try:
+            return json.loads(self.flashcards_json)
+        except Exception:
+            return []
+
+    @flashcards.setter
+    def flashcards(self, value: list[dict]):
+        self.flashcards_json = json.dumps(value, default=str)
+
+    @property
+    def pipeline_log(self) -> list[dict]:
+        try:
+            return json.loads(self.pipeline_log_json)
+        except Exception:
+            return []
+
+    @pipeline_log.setter
+    def pipeline_log(self, value: list[dict]):
+        self.pipeline_log_json = json.dumps(value, default=str)
 
 
 # ---------------------------------------------------------------------------

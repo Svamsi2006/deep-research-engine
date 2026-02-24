@@ -1,98 +1,100 @@
-"""FastAPI application entry point for Engineering Oracle."""
+"""FastAPI application entry point — Deep Research Platform."""
 
 from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.config import get_settings
-from app.database import init_db
-from app.middleware import ErrorHandlingMiddleware
-from app.routes.chat import router as chat_router
-from app.routes.reports import router as reports_router
 
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s | %(name)-28s | %(levelname)-7s | %(message)s",
+    format="%(asctime)s | %(name)-30s | %(levelname)-7s | %(message)s",
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Lifespan — startup / shutdown hooks
+# Lifespan
 # ---------------------------------------------------------------------------
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize resources on startup, clean up on shutdown."""
+    """Startup / shutdown hooks."""
     settings = get_settings()
 
-    # 1. Database
+    # Initialize database
+    from app.database import init_db
+
     logger.info("Initializing SQLite database...")
     await init_db(settings.database_url)
 
-    # 2. ChromaDB + Embeddings (lazy — initialized on first use)
-    logger.info("Evaluator will initialize on first use (ChromaDB + embeddings)")
-
     logger.info("=" * 60)
-    logger.info("  Engineering Oracle — Backend Ready")
-    logger.info(f"  Groq base: {settings.groq_base_url}")
-    logger.info(f"  Reasoning model: {settings.model_reasoning}")
-    logger.info(f"  Synthesis model: {settings.model_synthesis}")
-    logger.info(f"  Refiner model:   {settings.model_refiner}")
-    logger.info(f"  Tavily fallback: {'configured' if settings.tavily_api_key else 'NOT SET'}")
+    logger.info("  Deep Research Platform — Backend Ready")
+    logger.info(f"  OpenRouter: {'configured' if settings.openrouter_api_key else '⚠️ NOT SET'}")
+    logger.info(f"  Groq:       {'configured' if settings.groq_api_key else '⚠️ NOT SET'}")
+    logger.info(f"  Model:      {settings.openrouter_model} (primary)")
+    logger.info(f"  Fallback:   {settings.groq_model} (groq)")
+    logger.info(f"  Tavily:     {'configured' if settings.tavily_api_key else 'NOT SET'}")
     logger.info("=" * 60)
 
     yield  # App is running
 
-    # Cleanup
-    logger.info("Shutting down Engineering Oracle backend...")
+    logger.info("Backend shutting down")
 
 
 # ---------------------------------------------------------------------------
-# App factory
+# App
 # ---------------------------------------------------------------------------
 
-def create_app() -> FastAPI:
+app = FastAPI(
+    title="Deep Research Platform",
+    version="0.2.0",
+    lifespan=lifespan,
+)
+
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# Global error handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.exception(f"Unhandled error: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal server error: {str(exc)}"},
+    )
+
+
+# Health check
+@app.get("/health")
+async def health():
     settings = get_settings()
-
-    app = FastAPI(
-        title="Engineering Oracle",
-        description="Multi-Agent RAG Research & Benchmark Engine",
-        version="0.1.0",
-        lifespan=lifespan,
-    )
-
-    # CORS — allow frontend
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[
-            "http://localhost:3000",
-            "http://127.0.0.1:3000",
-            "https://*.vercel.app",
-        ],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
-    # Custom error handling middleware
-    app.add_middleware(ErrorHandlingMiddleware)
-
-    # Routes
-    app.include_router(chat_router, tags=["chat"])
-    app.include_router(reports_router, tags=["reports"])
-
-    # Health check
-    @app.get("/health")
-    async def health():
-        return {"status": "ok", "service": "engineering-oracle"}
-
-    return app
+    return {
+        "status": "healthy",
+        "version": "0.2.0",
+        "openrouter": bool(settings.openrouter_api_key),
+        "groq": bool(settings.groq_api_key),
+    }
 
 
-app = create_app()
+# Register routes
+from app.routes.chat import router as chat_router
+from app.routes.ingest import router as ingest_router
+
+app.include_router(chat_router)
+app.include_router(ingest_router)

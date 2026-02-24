@@ -1,52 +1,138 @@
-# Engineering Oracle
+# 🔬 Deep Research Engine
 
-Multi-Agent RAG Research & Benchmark Engine powered by LangGraph, OpenRouter free-tier models, and Next.js 15.
+**AI-Powered Deep Research for Engineers** — Ingest PDFs, URLs, and GitHub repos. Get cited engineering reports with a deterministic pipeline. Generate flashcards for study.
 
-## Architecture
+![Deep Research Engine](https://img.shields.io/badge/version-0.2-blue) ![License](https://img.shields.io/badge/license-MIT-green) ![Python](https://img.shields.io/badge/python-3.11+-yellow) ![Next.js](https://img.shields.io/badge/Next.js-15-black)
+
+## ✨ Features
+
+| Feature | Description |
+|---------|-------------|
+| 📎 **Ingest Sources** | Upload PDFs, paste URLs, link GitHub repos |
+| 📖 **Deep Report** | 5-step pipeline: Plan → Retrieve → Write → Judge → Refine |
+| ⚡ **Quick Answer** | Fast direct LLM response for simple questions |
+| 🃏 **Flashcards** | Auto-generate Q&A cards + export Anki CSV |
+| 🔍 **BM25 Search** | Pure Python keyword search — no GPU, no embeddings |
+| 🔄 **LLM Failover** | OpenRouter (free) → Groq automatic fallback |
+| 🎯 **Guided Tour** | 11-step onboarding walkthrough for new users |
+| 📊 **Quality Judge** | AI verifies every report for citations and accuracy |
+
+## 🏗️ Architecture
 
 ```
-Query → [Discovery] → [Harvest] → [Clean] → [Reasoning] → [Evaluation] → [Synthesis]
-              ↑                                                    |
-              └──────────── Supervisor (score < 0.8) ──────────────┘
+User → Question + PDFs/URLs → Ingest → BM25 Index
+                                       ↓
+                    Planner → Retrieve → Writer → Judge → Refine
+                                                          ↓
+                                          Report + Sources + Flashcards
 ```
 
-### Nodes
+### LLM Strategy: Free-First + Fallback
 
-1. **Discovery** — DuckDuckGo search (Tavily fallback if <3 quality results)
-2. **Harvest** — Parallel scraping + GitHub repo cloning + PDF download
-3. **Clean** — PyMuPDF4LLM for PDFs, chunking for docs, README extraction for repos
-4. **Reasoning** — MiMo V2 Flash analyzes FLOPs, latency, code patterns
-5. **Evaluation** — ChromaDB cosine similarity scoring; re-routes if <0.8
-6. **Synthesis** — Llama 3.3 70B generates structured Markdown report
+- **Primary**: OpenRouter (`openrouter/free`) — auto-selects best free model
+- **Fallback**: Groq (`llama-3.3-70b-versatile`) — activates on 429/5xx/timeout
 
-### Stack
+## 🚀 Quick Start
 
-- **Orchestration**: LangGraph (Supervisor + Evaluator pattern)
-- **Search**: DuckDuckGo + Tavily API
-- **Extraction**: Scrapy-Playwright + GitPython
-- **PDF Parsing**: PyMuPDF4LLM
-- **LLMs**: OpenRouter free models (Llama 3.3 70B, MiMo V2 Flash, Gemini 2.0 Flash)
-- **Embeddings**: sentence-transformers/all-MiniLM-L6-v2 + ChromaDB
-- **Backend**: FastAPI + SSE streaming
-- **Frontend**: Next.js 15, Tailwind, Shadcn/UI, Vercel AI SDK
+### Prerequisites
 
-## Quick Start
+- Python 3.11+
+- Node.js 18+
+- OpenRouter API key (free at [openrouter.ai/keys](https://openrouter.ai/keys))
+
+### Setup
 
 ```bash
-# 1. Copy env
+# Clone
+git clone https://github.com/Gundavenkatasai/deep_research_agent.git
+cd deep_research_agent
+
+# Backend
+cd backend
+pip install -e .
+cd ..
+
+# Frontend
+cd frontend
+npm install
+cd ..
+
+# Configure
 cp .env.example .env
-# Fill in your OPENROUTER_API_KEY and TAVILY_API_KEY
+# Edit .env and add your API keys
+```
 
-# 2. Docker (recommended)
-docker-compose up --build
+### Run
 
-# 3. Manual
-cd backend && pip install -e . && uvicorn app.main:app --reload
-cd frontend && npm install && npm run dev
+```bash
+# Backend (terminal 1)
+cd backend
+uvicorn app.main:app --reload --port 8000
+
+# Frontend (terminal 2)
+cd frontend
+npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000)
 
-## License
+## 📁 Project Structure
+
+```
+deep_research_agent/
+├── backend/
+│   └── app/
+│       ├── main.py              # FastAPI entry point
+│       ├── config.py            # Settings (OpenRouter + Groq)
+│       ├── llm_gateway.py       # LLM failover logic
+│       ├── database.py          # SQLite models
+│       ├── pipeline.py          # Deep report pipeline
+│       ├── flashcards.py        # Flashcard generator
+│       ├── agents/
+│       │   └── router.py        # Brain Router
+│       ├── routes/
+│       │   ├── chat.py          # /api/answer, /api/report, /api/flashcards
+│       │   └── ingest.py        # /api/ingest
+│       └── tools/
+│           ├── indexer.py       # BM25 search
+│           ├── scraper.py       # Web scraper
+│           ├── pdf_tool.py      # PDF extractor
+│           └── git_tool.py      # GitHub extractor
+├── frontend/
+│   └── src/
+│       ├── app/
+│       │   ├── page.tsx         # Main research UI
+│       │   └── about/page.tsx   # About page
+│       ├── components/
+│       │   ├── chat.tsx         # Research input panel
+│       │   ├── report-preview.tsx
+│       │   ├── sources-panel.tsx
+│       │   ├── flashcards-panel.tsx
+│       │   ├── thought-trace.tsx
+│       │   └── onboarding-tour.tsx
+│       └── lib/
+│           └── sse-client.ts    # API client
+└── .env                         # API keys
+```
+
+## 🔑 API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/answer` | POST | Quick LLM answer (SSE) |
+| `/api/report` | POST | Deep report pipeline (SSE) |
+| `/api/flashcards` | POST | Generate flashcards (SSE) |
+| `/api/ingest` | POST | Ingest PDF/URL/GitHub (JSON) |
+| `/health` | GET | Health check |
+
+## 📝 Environment Variables
+
+```env
+OPENROUTER_API_KEY=sk-or-...     # Required — get free at openrouter.ai
+GROQ_API_KEY=gsk_...             # Optional fallback
+TAVILY_API_KEY=tvly-...          # Optional web search
+```
+
+## 📄 License
 
 MIT

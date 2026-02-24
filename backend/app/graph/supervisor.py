@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 def _refine_query(original_query: str, reasoning_output: str) -> str:
     """
-    Use Groq-hosted LLM to generate a better search query
+    Use OpenRouter-hosted LLM to generate a better search query
     when the first attempt scored below the relevance threshold.
     """
     settings = get_settings()
@@ -25,8 +25,8 @@ def _refine_query(original_query: str, reasoning_output: str) -> str:
     from openai import OpenAI
 
     client = OpenAI(
-        base_url=settings.groq_base_url,
-        api_key=settings.groq_api_key,
+        base_url=settings.openrouter_base_url,
+        api_key=settings.openrouter_api_key,
     )
 
     try:

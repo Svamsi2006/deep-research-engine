@@ -1,18 +1,23 @@
 /**
- * Next.js API route — proxies POST /api/chat to the FastAPI backend.
- * Streams the SSE response back to the browser so the rewrite is no
- * longer needed and Vercel deployments work without CORS issues.
+ * Next.js API route — proxies all /api/* requests to the FastAPI backend.
+ * Supports: /api/answer, /api/report, /api/flashcards, /api/ingest
  */
 
-export const runtime = "edge"; // use edge runtime for streaming support
+import { NextRequest, NextResponse } from "next/server";
 
-const BACKEND_URL =
-  process.env.BACKEND_URL || "http://localhost:8000";
+export const runtime = "nodejs";
+export const maxDuration = 120; // 2 min timeout for deep report pipeline
 
-export async function POST(request: Request) {
+const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
+
+export async function POST(request: NextRequest) {
   const body = await request.json();
 
-  const upstream = await fetch(`${BACKEND_URL}/api/chat`, {
+  // Extract the path from the URL (e.g., /api/chat -> /api/chat)
+  const url = new URL(request.url);
+  const path = url.pathname; // /api/chat, /api/answer, etc.
+
+  const upstream = await fetch(`${BACKEND_URL}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -23,13 +28,21 @@ export async function POST(request: Request) {
     return new Response(text, { status: upstream.status });
   }
 
-  // Forward the SSE stream as-is
-  return new Response(upstream.body, {
-    status: 200,
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-    },
-  });
+  // Check if response is SSE (streaming)
+  const contentType = upstream.headers.get("content-type") || "";
+
+  if (contentType.includes("text/event-stream")) {
+    return new Response(upstream.body, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+      },
+    });
+  }
+
+  // Non-SSE response (e.g., /api/ingest returns JSON)
+  const data = await upstream.json();
+  return NextResponse.json(data);
 }

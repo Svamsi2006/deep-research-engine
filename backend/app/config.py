@@ -1,4 +1,4 @@
-"""Application configuration via pydantic-settings.  Reads from .env file."""
+"""Application configuration via pydantic-settings. Reads from .env file."""
 
 from __future__ import annotations
 
@@ -18,21 +18,18 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # ── Groq Cloud ────────────────────────────────────────────────────
+    # ── OpenRouter (primary — free models) ────────────────────────────
+    openrouter_api_key: str = ""
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_model: str = "openrouter/free"  # auto-selects best free model
+
+    # ── Groq (fallback) ───────────────────────────────────────────────
     groq_api_key: str = ""
     groq_base_url: str = "https://api.groq.com/openai/v1"
+    groq_model: str = "llama-3.3-70b-versatile"
 
-    # Model identifiers (Groq Cloud)
-    model_reasoning: str = "llama-3.1-8b-instant"
-    model_synthesis: str = "llama-3.3-70b-versatile"
-    model_refiner: str = "gemma2-9b-it"
-
-    # ── Tavily ────────────────────────────────────────────────────────
+    # ── Tavily (optional web search) ──────────────────────────────────
     tavily_api_key: str = ""
-
-    # ── ChromaDB ──────────────────────────────────────────────────────
-    chroma_host: str = "localhost"
-    chroma_port: int = 8001
 
     # ── Database ──────────────────────────────────────────────────────
     database_url: str = "sqlite+aiosqlite:///./oracle.db"
@@ -42,13 +39,10 @@ class Settings(BaseSettings):
     backend_port: int = 8000
 
     # ── Pipeline tuning ───────────────────────────────────────────────
-    min_quality_results: int = 3         # Minimum usable search results
-    relevance_threshold: float = 0.8     # Cosine similarity cutoff
-    max_retries: int = 2                 # Re-search attempts before forced synthesis
-    chunk_size: int = 2000               # Text splitter chunk size
-    chunk_overlap: int = 200             # Text splitter overlap
-    max_scrape_urls: int = 8             # Cap parallel scrapes
-    embedding_model: str = "all-MiniLM-L6-v2"
+    chunk_size: int = 600            # Target tokens per chunk (400-800)
+    chunk_overlap: int = 100         # Overlap between chunks
+    retrieval_top_k: int = 10        # BM25 top-k per sub-question
+    max_scrape_urls: int = 8         # Cap parallel URL scrapes
 
 
 @lru_cache

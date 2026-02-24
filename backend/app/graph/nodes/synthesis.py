@@ -1,4 +1,4 @@
-"""Node 6 — Synthesis: Groq-hosted LLM generates a structured Markdown report."""
+"""Node 6 — Synthesis: OpenRouter-hosted LLM generates a structured Markdown report."""
 
 from __future__ import annotations
 
@@ -69,7 +69,7 @@ RULES:
 
 def synthesis_node(state: OracleState) -> dict:
     """
-    Generate the final structured Markdown report using Llama 3.3 70B.
+    Generate the final structured Markdown report using OpenRouter LLM.
 
     Combines:
       - The reasoning analysis
@@ -80,15 +80,17 @@ def synthesis_node(state: OracleState) -> dict:
     query = state["query"]
     reasoning = state.get("reasoning_output", "")
     quality_warning = state.get("quality_warning", False)
+    is_fast = state.get("mode", "fast") == "fast"
     thoughts: list[ThoughtEvent] = []
 
     # ── Gather context ────────────────────────────────────────────────
     collection_name = _collection_name(query)
     retrieved: list[str] = []
-    try:
-        retrieved = query_chunks(collection_name, query, n_results=10)
-    except Exception:
-        pass
+    if not is_fast:
+        try:
+            retrieved = query_chunks(collection_name, query, n_results=10)
+        except Exception:
+            pass
 
     # Build citation list from search results
     search_results = state.get("search_results", [])
@@ -123,30 +125,32 @@ Write the complete engineering report following your system template.
 Include all citations as numbered references.
 """
 
+    model_name = settings.model_fast if is_fast else settings.model_synthesis
+    max_tok = 2048 if is_fast else 8192
     thoughts.append(
         ThoughtEvent(
             node=NodeName.SYNTHESIS,
-            message=f"Generating report with {settings.model_synthesis}...",
+            message=f"Generating report with {model_name} ({'fast' if is_fast else 'deep'} mode)...",
             status="running",
         )
     )
 
-    # ── Call synthesis model via Groq ─────────────────────────────────
+    # ── Call synthesis model via OpenRouter ────────────────────────────
     from openai import OpenAI
 
     client = OpenAI(
-        base_url=settings.groq_base_url,
-        api_key=settings.groq_api_key,
+        base_url=settings.openrouter_base_url,
+        api_key=settings.openrouter_api_key,
     )
 
     try:
         response = client.chat.completions.create(
-            model=settings.model_synthesis,
+            model=model_name,
             messages=[
                 {"role": "system", "content": SYNTHESIS_SYSTEM},
                 {"role": "user", "content": user_prompt},
             ],
-            max_tokens=8192,
+            max_tokens=max_tok,
             temperature=0.4,
         )
         report = response.choices[0].message.content or ""

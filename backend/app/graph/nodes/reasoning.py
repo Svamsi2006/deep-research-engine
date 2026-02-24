@@ -1,4 +1,4 @@
-"""Node 4 — Reasoning: Groq-hosted LLM analyses engineering data for metrics."""
+"""Node 4 — Reasoning: OpenRouter-hosted LLM analyses engineering data for metrics."""
 
 from __future__ import annotations
 
@@ -44,13 +44,14 @@ Output your analysis as structured Markdown with clear section headers.
 
 def reasoning_node(state: OracleState) -> dict:
     """
-    Use Groq-hosted LLM to analyze the collected and chunked data.
+    Use OpenRouter-hosted LLM to analyze the collected and chunked data.
 
-    Retrieves the most relevant chunks from ChromaDB, feeds them as context,
-    and requests a structured technical analysis.
+    Retrieves the most relevant chunks from ChromaDB (if available), feeds them
+    as context, and requests a structured technical analysis.
     """
     settings = get_settings()
     query = state.get("refined_query") or state["query"]
+    is_fast = state.get("mode", "fast") == "fast"
     thoughts: list[ThoughtEvent] = []
 
     # ── Retrieve relevant chunks from ChromaDB ────────────────────────
@@ -58,21 +59,22 @@ def reasoning_node(state: OracleState) -> dict:
     thoughts.append(
         ThoughtEvent(
             node=NodeName.REASONING,
-            message="Retrieving top-k relevant chunks from ChromaDB...",
+            message="Retrieving top-k relevant chunks...",
             status="running",
         )
     )
 
     retrieved: list[str] = []
-    try:
-        retrieved = query_chunks(collection_name, query, n_results=15)
-    except Exception as e:
-        logger.warning(f"ChromaDB retrieval failed: {e}")
+    if not is_fast:
+        try:
+            retrieved = query_chunks(collection_name, query, n_results=15)
+        except Exception as e:
+            logger.warning(f"ChromaDB retrieval failed: {e}")
 
-    # Fallback: use raw chunks from state if ChromaDB fails
+    # Fallback: use raw chunks from state
     if not retrieved:
         chunks: list[Chunk] = state.get("cleaned_chunks", [])
-        retrieved = [c.content for c in chunks[:15]]
+        retrieved = [c.content for c in chunks[: (5 if is_fast else 15)]]
 
     thoughts.append(
         ThoughtEvent(
@@ -99,11 +101,13 @@ Perform a thorough technical analysis of the above sources in relation to the qu
 Follow the analysis framework in your system instructions.
 """
 
-    # ── Call reasoning model via Groq ─────────────────────────────────
+    # ── Call reasoning model via OpenRouter ────────────────────────────
+    model_name = settings.model_fast if is_fast else settings.model_reasoning
+    max_tok = 1024 if is_fast else 4096
     thoughts.append(
         ThoughtEvent(
             node=NodeName.REASONING,
-            message=f"Invoking {settings.model_reasoning} for technical analysis...",
+            message=f"Invoking {model_name} for {'quick' if is_fast else 'deep'} analysis...",
             status="running",
         )
     )
@@ -111,18 +115,18 @@ Follow the analysis framework in your system instructions.
     from openai import OpenAI
 
     client = OpenAI(
-        base_url=settings.groq_base_url,
-        api_key=settings.groq_api_key,
+        base_url=settings.openrouter_base_url,
+        api_key=settings.openrouter_api_key,
     )
 
     try:
         response = client.chat.completions.create(
-            model=settings.model_reasoning,
+            model=model_name,
             messages=[
                 {"role": "system", "content": REASONING_SYSTEM},
                 {"role": "user", "content": user_prompt},
             ],
-            max_tokens=4096,
+            max_tokens=max_tok,
             temperature=0.3,
         )
         reasoning_output = response.choices[0].message.content or ""

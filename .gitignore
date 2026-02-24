@@ -1,37 +1,45 @@
-# Python
+# Dependencies
+node_modules/
 __pycache__/
-*.py[cod]
-*.egg-info/
-dist/
-build/
+*.pyc
+*.pyo
 .venv/
 venv/
-*.egg
-.pytest_cache/
-.mypy_cache/
+env/
 
 # Environment
 .env
 .env.local
-.env.production
+.env.*.local
 
-# Node
-node_modules/
+# Build outputs
 .next/
 out/
+dist/
+build/
+*.egg-info/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# Project
-repos_tmp/
-chroma_data/
-*.db
-*.sqlite
+# Logs
+*.log
+npm-debug.log*
+
+# Misc
+.vercel/
+.turbo/

@@ -54,6 +54,7 @@ class OracleState(TypedDict, total=False):
     retry_count: int                  # Max 2 retries before forced synthesis
     active_node: str                  # Current node name for UI trace
     quality_warning: bool             # True if synthesis forced despite low score
+    mode: str                         # "fast" or "thinking"
 
     # ── Thought trace (streamed to UI via SSE) ────────────────────────
     thought_trace: Annotated[list[ThoughtEvent], _merge_lists]
