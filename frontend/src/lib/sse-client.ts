@@ -56,7 +56,7 @@ export interface SSECallbacks {
 
 // Helper to get the base API URL directly (bypassing Vercel proxy if possible)
 function getApiUrl(path: string) {
-  const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
+  const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "");
   return baseUrl ? `${baseUrl}${path}` : path;
 }
 
