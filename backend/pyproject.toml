@@ -39,6 +39,7 @@ dependencies = [
     # Database
     "sqlalchemy>=2.0",
     "aiosqlite>=0.20",
+    "asyncpg>=0.29",
     # Utils
     "tenacity>=8.0",
     "python-dotenv>=1.0",
