@@ -54,13 +54,19 @@ export interface SSECallbacks {
   onNeedMoreSources?: (event: NeedMoreSourcesEvent) => void;
 }
 
+// Helper to get the base API URL directly (bypassing Vercel proxy if possible)
+function getApiUrl(path: string) {
+  const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
+  return baseUrl ? `${baseUrl}${path}` : path;
+}
+
 async function streamSSE(
   url: string,
   body: Record<string, unknown>,
   callbacks: SSECallbacks,
   signal?: AbortSignal
 ): Promise<void> {
-  const response = await fetch(url, {
+  const response = await fetch(getApiUrl(url), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -194,7 +200,7 @@ export async function ingestSource(
   payload: string,
   fileName?: string
 ): Promise<IngestResult> {
-  const response = await fetch("/api/ingest", {
+  const response = await fetch(getApiUrl("/api/ingest"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

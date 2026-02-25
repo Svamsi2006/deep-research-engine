@@ -241,16 +241,16 @@ export default function Home() {
       </header>
 
       {/* Main layout */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col md:flex-row overflow-y-auto md:overflow-hidden">
         {/* Left panel: Input + Steps */}
         <div
           className={cn(
-            "flex flex-col border-r border-border transition-all duration-200",
-            showTrace ? "w-[480px]" : "w-[380px]"
+            "flex flex-col border-b md:border-b-0 md:border-r border-border transition-all duration-200 shrink-0",
+            showTrace ? "md:w-[480px]" : "md:w-[380px]"
           )}
         >
           {/* Research Input */}
-          <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="flex-1 min-h-[300px] md:min-h-0 overflow-y-auto">
             <ResearchInput
               onAnswer={handleAnswer}
               onReport={handleReport}
@@ -278,7 +278,7 @@ export default function Home() {
         </div>
 
         {/* Right panel: Tabs */}
-        <div className="flex-1 min-w-0 bg-background flex flex-col">
+        <div className="flex-1 min-w-0 bg-background flex flex-col min-h-[600px] md:min-h-0">
           {/* Tab bar */}
           <div className="flex items-center border-b border-border px-2">
             {tabs.map((tab) => {
