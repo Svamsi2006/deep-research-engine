@@ -1,6 +1,12 @@
 /**
  * SSE client for the Deep Research Platform.
  * Supports /api/answer, /api/report, /api/flashcards, and /api/ingest.
+ *
+ * All requests use RELATIVE paths (e.g. /api/answer) so they are
+ * proxied through the Next.js API routes on the Vercel deployment.
+ * Never use NEXT_PUBLIC_API_URL here — that would bypass the proxy
+ * and send requests directly from the browser to the Render backend,
+ * which breaks on the deployed site (localhost:8000 doesn't exist there).
  */
 
 export interface ThoughtEvent {
@@ -54,19 +60,14 @@ export interface SSECallbacks {
   onNeedMoreSources?: (event: NeedMoreSourcesEvent) => void;
 }
 
-// Helper to get the base API URL directly (bypassing Vercel proxy if possible)
-function getApiUrl(path: string) {
-  const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "");
-  return baseUrl ? `${baseUrl}${path}` : path;
-}
-
 async function streamSSE(
   url: string,
   body: Record<string, unknown>,
   callbacks: SSECallbacks,
   signal?: AbortSignal
 ): Promise<void> {
-  const response = await fetch(getApiUrl(url), {
+  // Use url as-is (relative path like /api/answer) — goes through Vercel proxy
+  const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -200,7 +201,8 @@ export async function ingestSource(
   payload: string,
   fileName?: string
 ): Promise<IngestResult> {
-  const response = await fetch(getApiUrl("/api/ingest"), {
+  // Use relative path — goes through Vercel /api/ingest proxy
+  const response = await fetch("/api/ingest", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

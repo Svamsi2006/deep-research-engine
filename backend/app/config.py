@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     # ── OpenRouter (primary — free models) ────────────────────────────
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    openrouter_model: str = "openrouter/free"  # auto-selects best free model
+    openrouter_model: str = "deepseek/deepseek-chat-v3-0324:free"
 
     # ── Groq (fallback) ───────────────────────────────────────────────
     groq_api_key: str = ""
