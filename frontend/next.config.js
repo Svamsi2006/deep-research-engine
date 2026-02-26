@@ -2,11 +2,15 @@
 const nextConfig = {
   reactStrictMode: true,
 
-  // Pass BACKEND_URL to server-side API route handlers.
-  // On Vercel: set BACKEND_URL=https://your-render-app.onrender.com in the Dashboard.
-  // Locally: set BACKEND_URL=http://localhost:8000 in .env (no NEXT_PUBLIC_ prefix needed).
+  // Server-side env vars for Vercel serverless route handlers.
+  // Set these in Vercel Dashboard → Settings → Environment Variables.
+  // OPENROUTER_API_KEY and GROQ_API_KEY are REQUIRED for LLM calls.
+  // BACKEND_URL is NO LONGER NEEDED — all LLM calls happen on Vercel now.
   env: {
-    BACKEND_URL: process.env.BACKEND_URL || "http://localhost:8000",
+    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || "",
+    GROQ_API_KEY: process.env.GROQ_API_KEY || "",
+    OPENROUTER_MODEL: process.env.OPENROUTER_MODEL || "deepseek/deepseek-chat-v3-0324:free",
+    GROQ_MODEL: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
   },
 };
 
