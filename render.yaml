@@ -32,8 +32,3 @@ services:
         destination: /
       - path: /api/*
         destination: https://deep-research-backend.onrender.com/api/*
-
-  - type: cron
-    name: keep-alive-cronjob
-    schedule: "*/10 * * * *"
-    runCommand: "curl https://deep-research-backend.onrender.com/health"
