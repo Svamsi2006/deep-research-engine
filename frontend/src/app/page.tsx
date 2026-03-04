@@ -11,6 +11,12 @@ import {
   AlertTriangle,
   Info,
   HelpCircle,
+  Brain,
+  Layers,
+  Route,
+  RefreshCw,
+  Search,
+  FileUp,
 } from "lucide-react";
 import ResearchInput from "@/components/chat";
 import ReportPreview from "@/components/report-preview";
@@ -36,6 +42,7 @@ export default function Home() {
   const [reportContent, setReportContent] = useState("");
   const [isRunning, setIsRunning] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [showIntro, setShowIntro] = useState(true);
   const [qualityWarning, setQualityWarning] = useState(false);
   const [evaluationScore, setEvaluationScore] = useState<number | null>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -236,7 +243,178 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Main layout */}
+      {/* Intro Screen */}
+      {showIntro && !reportContent && (
+        <div className="flex-1 overflow-y-auto bg-gradient-to-br from-background via-background to-accent/5">
+          <div className="max-w-6xl mx-auto px-4 py-8 md:py-12">
+            {/* Hero Section */}
+            <div className="text-center mb-12 md:mb-16">
+              <div className="flex items-center justify-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-lg bg-accent/20 flex items-center justify-center">
+                  <Brain className="w-5 h-5 text-accent" />
+                </div>
+                <h2 className="text-3xl md:text-4xl font-bold">
+                  AI-Powered Research Engine
+                </h2>
+              </div>
+              <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+                Ingest documents, search the web, and generate comprehensive cited research reports using a deterministic AI pipeline. Get answers faster with real-time streaming and automatic quality evaluation.
+              </p>
+              <button
+                onClick={() => setShowIntro(false)}
+                className="mt-6 px-6 py-2 bg-accent text-accent-foreground rounded-lg font-medium hover:opacity-90 transition-opacity"
+              >
+                Get Started →
+              </button>
+            </div>
+
+            {/* How It Works */}
+            <div className="mb-12 md:mb-16">
+              <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
+                <Route className="w-5 h-5 text-accent" />
+                The Research Pipeline
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                {[
+                  { num: 1, label: "Plan", desc: "Break down question into sub-questions" },
+                  { num: 2, label: "Retrieve", desc: "Search ingested documents" },
+                  { num: 3, label: "Web Search", desc: "Augment with live web results" },
+                  { num: 4, label: "Write", desc: "Synthesize evidence into report" },
+                  { num: 5, label: "Judge & Refine", desc: "Score quality, refine if needed" },
+                ].map((step) => (
+                  <div key={step.num} className="relative">
+                    <div className="rounded-lg border border-border bg-muted/50 p-4 text-center">
+                      <div className="text-2xl font-bold text-accent mb-2">{step.num}</div>
+                      <div className="text-sm font-medium mb-1">{step.label}</div>
+                      <div className="text-xs text-muted-foreground">{step.desc}</div>
+                    </div>
+                    {step.num < 5 && (
+                      <div className="absolute -right-2 top-1/2 -translate-y-1/2 hidden md:block">
+                        <div className="text-muted-foreground text-lg">→</div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Key Features */}
+            <div className="mb-12 md:mb-16">
+              <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
+                <Zap className="w-5 h-5 text-accent" />
+                Core Features
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                {[
+                  { icon: FileUp, label: "Multi-Source Ingest", desc: "PDFs, URLs, GitHub repos" },
+                  { icon: Search, label: "Dual Search", desc: "Local + web augmentation" },
+                  { icon: Layers, label: "Deep Reports", desc: "Deterministic 5-step pipeline" },
+                  { icon: BookOpen, label: "Auto Flashcards", desc: "Study cards from reports" },
+                ].map((feature) => {
+                  const Icon = feature.icon;
+                  return (
+                    <div key={feature.label} className="rounded-lg border border-border bg-muted/30 p-4">
+                      <Icon className="w-5 h-5 text-accent mb-2" />
+                      <div className="text-sm font-medium mb-1">{feature.label}</div>
+                      <div className="text-xs text-muted-foreground">{feature.desc}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Architecture */}
+            <div className="mb-12 md:mb-16">
+              <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
+                <Layers className="w-5 h-5 text-accent" />
+                Architecture Stack
+              </h3>
+              <div className="rounded-lg border border-border bg-muted/30 p-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div>
+                    <h4 className="font-semibold text-sm mb-3">Frontend</h4>
+                    <ul className="text-xs text-muted-foreground space-y-1">
+                      <li>• Next.js 15 (React 19)</li>
+                      <li>• Real-time SSE streaming</li>
+                      <li>• Tailwind CSS + Lucide icons</li>
+                      <li>• Vercel deployment ready</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-sm mb-3">Backend</h4>
+                    <ul className="text-xs text-muted-foreground space-y-1">
+                      <li>• FastAPI + Python 3.11+</li>
+                      <li>• SQLite + SQLAlchemy async</li>
+                      <li>• Pydantic v2 validation</li>
+                      <li>• Railway deployment ready</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-sm mb-3">LLM & Search</h4>
+                    <ul className="text-xs text-muted-foreground space-y-1">
+                      <li>• 7 LLM providers (OpenRouter, Groq, OpenAI, etc.)</li>
+                      <li>• DuckDuckGo + Tavily web search</li>
+                      <li>• Circuit breaker + auto-failover</li>
+                      <li>• Free-tier models available</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Models */}
+            <div className="mb-12 md:mb-16">
+              <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
+                <Brain className="w-5 h-5 text-accent" />
+                LLM Models Used
+              </h3>
+              <div className="rounded-lg border border-border bg-muted/30 p-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <div className="font-medium text-accent mb-2">Primary (OpenRouter)</div>
+                    <p className="text-muted-foreground">Meta Llama 3.3 70B Instruct (free tier)</p>
+                  </div>
+                  <div>
+                    <div className="font-medium text-accent mb-2">Fallback (Groq)</div>
+                    <p className="text-muted-foreground">Llama 3.3 70B Versatile (fast inference)</p>
+                  </div>
+                  <div>
+                    <div className="font-medium text-accent mb-2">Embeddings</div>
+                    <p className="text-muted-foreground">sentence-transformers → Cohere → OpenAI fallback</p>
+                  </div>
+                  <div>
+                    <div className="font-medium text-accent mb-2">Other Providers</div>
+                    <p className="text-muted-foreground">OpenAI, Gemini, DeepSeek, Grok (switchable)</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Getting Started */}
+            <div className="text-center bg-muted/50 rounded-lg border border-border p-8">
+              <h3 className="text-lg font-bold mb-3">Ready to Start?</h3>
+              <p className="text-sm text-muted-foreground mb-6">
+                Ingest your first document or ask a question about the web. The AI will research and present findings in real-time.
+              </p>
+              <button
+                onClick={() => setShowIntro(false)}
+                className="px-8 py-2.5 bg-accent text-accent-foreground rounded-lg font-medium hover:opacity-90 transition-opacity"
+              >
+                Begin Research →
+              </button>
+            </div>
+
+            <div className="text-center mt-8 text-xs text-muted-foreground">
+              <p>
+                Learn more on the <Link href="/about" className="text-accent hover:underline">Architecture & How It Works</Link> page
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Main layout (hidden when showing intro) */}
+      {(!showIntro || reportContent) && (
       <div className="flex-1 flex flex-col md:flex-row overflow-y-auto md:overflow-hidden">
         {/* Left panel: Input + Steps */}
         <div
@@ -335,6 +513,7 @@ export default function Home() {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }
