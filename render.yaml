@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: deep-research-backend
+    runtime: python
+    plan: free
+    buildCommand: "pip install -r backend/requirements.txt || pip install -e backend"
+    startCommand: "cd backend && gunicorn app.main:app --workers 1 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000"
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sqlite
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+    autoDeploy: true
+
+  - type: web
+    name: deep-research-frontend
+    runtime: node
+    plan: free
+    buildCommand: "cd frontend && npm install && npm run build"
+    startCommand: "cd frontend && npm start"
+    envVars:
+      - key: BACKEND_URL
+        value: https://deep-research-backend.onrender.com
+    autoDeploy: true
+    routes:
+      - path: /
+        destination: /
+      - path: /api/*
+        destination: https://deep-research-backend.onrender.com/api/*
+
+  - type: cron
+    name: keep-alive-cronjob
+    schedule: "*/10 * * * *"
+    runCommand: "curl https://deep-research-backend.onrender.com/health"
