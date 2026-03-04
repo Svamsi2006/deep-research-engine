@@ -31,6 +31,9 @@ export interface DoneEvent {
 export interface SourceInfo {
   source_id: string;
   title: string;
+  url?: string;
+  type?: string;
+  snippets?: string[];
 }
 
 export interface FlashcardData {
@@ -218,4 +221,56 @@ export async function ingestSource(
   }
 
   return response.json();
+}
+
+// ── Runtime Settings API ────────────────────────────────────────────
+
+export interface RuntimeSettings {
+  ai_provider: string;
+  ai_api_key: string;
+  ai_api_base_url: string;
+  ai_model: string;
+  ai_context_length: number;
+  web_search_provider: string;
+  web_search_api_key: string;
+  web_search_concurrency_limit: number;
+  web_search_advanced: boolean;
+  web_search_topic: string;
+  ai_provider_presets: Record<string, { api_base_url: string; model: string; context_length: number }>;
+  web_provider_presets: Record<string, { supports_topic: boolean; supports_advanced: boolean }>;
+}
+
+export interface RuntimeSettingsUpdate {
+  ai_provider: string;
+  ai_api_key: string;
+  ai_api_base_url: string;
+  ai_model: string;
+  ai_context_length: number;
+  web_search_provider: string;
+  web_search_api_key: string;
+  web_search_concurrency_limit: number;
+  web_search_advanced: boolean;
+  web_search_topic: string;
+}
+
+export async function getRuntimeSettings(): Promise<RuntimeSettings> {
+  const response = await fetch("/api/settings", { method: "GET" });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Settings load failed (${response.status}): ${text}`);
+  }
+  return response.json();
+}
+
+export async function saveRuntimeSettings(payload: RuntimeSettingsUpdate): Promise<void> {
+  const response = await fetch("/api/settings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Settings save failed (${response.status}): ${text}`);
+  }
 }

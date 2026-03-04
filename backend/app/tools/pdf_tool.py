@@ -44,14 +44,31 @@ def _pdf_to_markdown(pdf_path: str | Path) -> str:
     Handles multi-column layouts and tables automatically via PyMuPDF4LLM's
     built-in heuristics.
     """
-    import pymupdf4llm
+    try:
+        import pymupdf4llm
 
-    md_text = pymupdf4llm.to_markdown(
-        str(pdf_path),
-        write_images=False,    # Skip image extraction to keep output lean
-        show_progress=False,
-    )
-    return md_text
+        md_text = pymupdf4llm.to_markdown(
+            str(pdf_path),
+            write_images=False,    # Skip image extraction to keep output lean
+            show_progress=False,
+        )
+        if md_text and md_text.strip():
+            return md_text
+    except Exception as e:
+        logger.warning(f"pymupdf4llm unavailable/failed, falling back to basic fitz: {e}")
+
+    # Fallback to pure local extraction if empty or errored
+    try:
+        import fitz  # PyMuPDF fallback
+        logger.info(f"Using fitz fallback for {pdf_path}")
+        doc = fitz.open(str(pdf_path))
+        text = ""
+        for page in doc:
+            text += page.get_text()
+        return text
+    except Exception as e:
+        logger.error(f"Fallback extraction failed: {e}")
+        return ""
 
 
 # ---------------------------------------------------------------------------
@@ -61,37 +78,50 @@ def _pdf_to_markdown(pdf_path: str | Path) -> str:
 def parse_pdf(source: str) -> str:
     """
     Parse a PDF from a local path or URL → Markdown string.
-
-    Args:
-        source: Either a local file path or an HTTP(S) URL pointing to a PDF.
-
-    Returns:
-        Markdown text extracted from the PDF.
+    
+    Raises ValueError if PDF is image-based (scanned) with insufficient text.
     """
-    path: Path | None = None
-    is_temp = False
+    # Download if URL
+    if source.startswith("http"):
+        pdf_path = _download_pdf(source)
+    else:
+        pdf_path = Path(source)
 
     try:
-        if source.startswith(("http://", "https://")):
-            path = _download_pdf(source)
-            is_temp = True
-        else:
-            path = Path(source)
-            if not path.exists():
-                logger.error(f"PDF not found: {source}")
-                return ""
-
-        md = _pdf_to_markdown(path)
-        logger.info(f"Parsed PDF {source} → {len(md)} chars of Markdown")
-        return md
-
+        md = _pdf_to_markdown(pdf_path)
+        
+        # Check if it's a scanned PDF (very little text)
+        if md and len(md.strip()) > 100:
+            return md
+        
+        # Fallback: try direct PyMuPDF extraction
+        import fitz
+        doc = fitz.open(str(pdf_path))
+        if len(doc) == 0:
+            raise ValueError("PDF is empty")
+        
+        text = ""
+        for page in doc:
+            text += page.get_text()
+        
+        if len(text.strip()) < 50:
+            raise ValueError(
+                "PDF appears to be an image or scanned document with no extractable text. "
+                "OCR is required to process this PDF. Please provide a text-based PDF."
+            )
+        
+        logger.info(f"Extracted {len(text)} chars from PDF using fallback")
+        return text
+    except ValueError:
+        raise
     except Exception as e:
-        logger.error(f"Failed to parse PDF {source}: {e}")
-        return ""
+        logger.error(f"PDF parsing failed: {e}")
+        raise ValueError(f"Failed to parse PDF: {e}")
     finally:
-        if is_temp and path and path.exists():
+        # Cleanup temp file
+        if isinstance(pdf_path, Path) and pdf_path.name.startswith("oracle_pdf_"):
             try:
-                path.unlink()
+                pdf_path.unlink()
             except OSError:
                 pass
 

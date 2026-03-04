@@ -34,29 +34,49 @@ class Flashcard:
 
 
 FLASHCARD_SYSTEM = """\
-You are a flashcard generator for engineering study.
-
-Given a technical report, generate flashcards that test understanding of key concepts.
-
-Output ONLY valid JSON array (no markdown wrapping):
-[
-  {
-    "front": "Question text",
-    "back": "Answer text (concise, factual)",
-    "tags": ["topic1", "topic2"],
-    "source_citations": ["citation ref from report"]
-  },
-  ...
-]
-
+Generate 5-8 flashcards from the report below. Return ONLY a raw JSON array, no markdown fences:
+[{"front":"Question?","back":"Concise answer.","tags":["topic"],"source_citations":["ref"]}]
 Rules:
-- Generate 3-5 flashcards per major section of the report
-- Front: Clear question that tests understanding (not trivia)
-- Back: Concise answer with key facts/numbers
-- Include comparison questions where relevant
-- Include "why" questions, not just "what" questions
-- Tags should reflect the topic area
+- Front: test understanding (why/how questions, not trivia)
+- Back: concise factual answer (1-3 sentences)
+- Tags: 1-2 topic keywords
+- source_citations: reference from the report if applicable
+Return ONLY the JSON array. No extra text, no code fences, no explanation.
 """
+
+
+def _extract_json_array(text: str) -> list:
+    """Robustly extract a JSON array from LLM output that may have markdown fences or extra text."""
+    import re
+    
+    text = text.strip()
+    
+    # Strip markdown code fences (```json ... ``` or ``` ... ```)
+    fence_match = re.search(r'```(?:json)?\s*\n?(.*?)```', text, re.DOTALL | re.IGNORECASE)
+    if fence_match:
+        text = fence_match.group(1).strip()
+    
+    # Try direct parse
+    try:
+        data = json.loads(text)
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            return [data]
+    except json.JSONDecodeError:
+        pass
+    
+    # Try to find the first [ ... ] block in the text
+    bracket_match = re.search(r'\[.*\]', text, re.DOTALL)
+    if bracket_match:
+        try:
+            data = json.loads(bracket_match.group())
+            if isinstance(data, list):
+                return data
+        except json.JSONDecodeError:
+            pass
+    
+    return []
 
 
 def generate_flashcards(report_md: str, question: str) -> list[Flashcard]:
@@ -66,32 +86,33 @@ def generate_flashcards(report_md: str, question: str) -> list[Flashcard]:
         {
             "role": "user",
             "content": (
-                f"Original question: {question}\n\n"
-                f"Report:\n{report_md[:8000]}\n\n"
-                "Generate flashcards for this report."
+                f"Question: {question}\n\n"
+                f"Report:\n{report_md[:4000]}\n\n"
+                "Generate flashcards."
             ),
         },
     ]
 
-    result = call_llm(messages, purpose="flashcards", max_tokens=2048, temperature=0.3)
+    result = call_llm(messages, purpose="flashcards", max_tokens=1500, temperature=0.3)
 
     try:
-        text = result.text.strip()
-        if text.startswith("```"):
-            text = text.split("```")[1]
-            if text.startswith("json"):
-                text = text[4:]
-            text = text.strip()
+        cards_data = _extract_json_array(result.text)
 
-        cards_data = json.loads(text)
-        if not isinstance(cards_data, list):
-            cards_data = [cards_data]
+        if not cards_data:
+            logger.warning(f"Flashcard generation returned no parseable JSON: {result.text[:300]}")
+            return []
 
         cards = []
         for item in cards_data:
+            if not isinstance(item, dict):
+                continue
+            front = item.get("front", "").strip()
+            back = item.get("back", "").strip()
+            if not front or not back:
+                continue
             cards.append(Flashcard(
-                front=item.get("front", ""),
-                back=item.get("back", ""),
+                front=front,
+                back=back,
                 tags=item.get("tags", []),
                 source_citations=item.get("source_citations", []),
             ))
@@ -99,8 +120,8 @@ def generate_flashcards(report_md: str, question: str) -> list[Flashcard]:
         logger.info(f"Generated {len(cards)} flashcards")
         return cards
 
-    except json.JSONDecodeError:
-        logger.warning(f"Flashcard generation returned non-JSON: {result.text[:200]}")
+    except Exception as e:
+        logger.warning(f"Flashcard parsing error: {e} — raw: {result.text[:200]}")
         return []
 
 

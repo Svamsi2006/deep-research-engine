@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# System deps for Playwright & Scrapy
+# System deps for git clone + build
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
@@ -13,9 +13,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install Python deps
 COPY pyproject.toml .
 RUN pip install --no-cache-dir -e .
-
-# Install Playwright browsers
-RUN pip install playwright && playwright install --with-deps chromium
 
 COPY . .
 

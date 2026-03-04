@@ -1,7 +1,6 @@
-"""BM25 Indexer — section-aware chunking + keyword retrieval.
+"""Hybrid Indexer — BM25 keyword search + cosine vector search fused with RRF.
 
-No embeddings needed. Uses rank_bm25 for fast keyword-based search.
-Fallback: simple TF-IDF scoring if rank_bm25 not installed.
+Fallback: if no embeddings are stored, behaves exactly like the old BM25-only indexer.
 """
 
 from __future__ import annotations
@@ -11,24 +10,26 @@ import math
 import re
 import uuid
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class IndexChunk:
-    """A chunk ready for indexing."""
+    """A chunk ready for indexing (with optional embedding)."""
     id: str
     source_id: str
     content: str
     chunk_index: int
     section_heading: str
+    embedding: Optional[list[float]] = field(default=None)
 
 
 @dataclass
 class SearchResult:
-    """A search hit from BM25."""
+    """A search hit with a combined hybrid score."""
     chunk_id: str
     source_id: str
     content: str
@@ -207,3 +208,132 @@ class BM25Index:
 def build_index(chunks: list[IndexChunk]) -> BM25Index:
     """Build a BM25 index from chunks."""
     return BM25Index(chunks)
+
+
+# ---------------------------------------------------------------------------
+# Vector Search (cosine similarity from stored embeddings)
+# ---------------------------------------------------------------------------
+
+def _cosine(a: list[float], b: list[float]) -> float:
+    """Pure-Python cosine similarity (no numpy needed at index time)."""
+    try:
+        import numpy as np
+        va, vb = np.array(a, dtype=np.float32), np.array(b, dtype=np.float32)
+        na, nb = np.linalg.norm(va), np.linalg.norm(vb)
+        if na == 0 or nb == 0:
+            return 0.0
+        return float(np.dot(va, vb) / (na * nb))
+    except ImportError:
+        dot = sum(x * y for x, y in zip(a, b))
+        na = math.sqrt(sum(x * x for x in a))
+        nb = math.sqrt(sum(y * y for y in b))
+        return dot / (na * nb) if na > 0 and nb > 0 else 0.0
+
+
+def vector_search(
+    query_embedding: list[float],
+    chunks: list[IndexChunk],
+    top_k: int = 10,
+) -> list[SearchResult]:
+    """Return top-k chunks by cosine similarity to query_embedding."""
+    if not query_embedding or not chunks:
+        return []
+
+    scored = []
+    for chunk in chunks:
+        if chunk.embedding is None:
+            continue
+        score = _cosine(query_embedding, chunk.embedding)
+        scored.append((score, chunk))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+
+    return [
+        SearchResult(
+            chunk_id=c.id,
+            source_id=c.source_id,
+            content=c.content,
+            section_heading=c.section_heading,
+            score=round(sc, 4),
+        )
+        for sc, c in scored[:top_k]
+        if sc > 0.05  # discard near-zero matches
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Reciprocal Rank Fusion (RRF) — fuse BM25 + vector results
+# ---------------------------------------------------------------------------
+
+def _rrf(rankings: list[list[SearchResult]], k: int = 60) -> list[SearchResult]:
+    """
+    Reciprocal Rank Fusion of multiple ranked lists.
+
+    RRF score = Σ 1 / (rank + k)  for each result across all lists.
+    """
+    scores: dict[str, float] = {}
+    best: dict[str, SearchResult] = {}
+
+    for ranked_list in rankings:
+        for rank, result in enumerate(ranked_list):
+            cid = result.chunk_id
+            scores[cid] = scores.get(cid, 0.0) + 1.0 / (rank + k)
+            if cid not in best:
+                best[cid] = result
+
+    merged = []
+    for cid, rrf_score in sorted(scores.items(), key=lambda x: x[1], reverse=True):
+        r = best[cid]
+        merged.append(SearchResult(
+            chunk_id=r.chunk_id,
+            source_id=r.source_id,
+            content=r.content,
+            section_heading=r.section_heading,
+            score=round(rrf_score, 6),
+        ))
+
+    return merged
+
+
+def hybrid_search(
+    query: str,
+    chunks: list[IndexChunk],
+    top_k: int = 15,
+) -> list[SearchResult]:
+    """
+    Hybrid BM25 + vector search fused with Reciprocal Rank Fusion.
+
+    If no embeddings are stored on the chunks, falls back to BM25 only.
+    If no LLM API key is configured, proceeds with BM25 only.
+    """
+    bm25_index = build_index(chunks)
+    bm25_results = bm25_index.search(query, top_k=top_k * 2)
+
+    # Check if any chunks have embeddings
+    has_embeddings = any(c.embedding is not None for c in chunks)
+
+    if not has_embeddings:
+        logger.debug("No embeddings found — using BM25 only")
+        return bm25_results[:top_k]
+
+    # Embed the query
+    try:
+        from app.tools.embedder import embed_single
+        query_embedding = embed_single(query)
+    except Exception as e:
+        logger.warning(f"Query embedding failed: {e} — using BM25 only")
+        return bm25_results[:top_k]
+
+    if query_embedding is None:
+        return bm25_results[:top_k]
+
+    vector_results = vector_search(query_embedding, chunks, top_k=top_k * 2)
+
+    if not vector_results:
+        return bm25_results[:top_k]
+
+    # Fuse with RRF
+    fused = _rrf([bm25_results, vector_results])
+    logger.info(f"Hybrid search: BM25={len(bm25_results)}, vector={len(vector_results)}, fused={len(fused)}")
+    return fused[:top_k]
+

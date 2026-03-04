@@ -53,6 +53,10 @@ HEADERS = {
     ),
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate",
+    "DNT": "1",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
 }
 
 
@@ -82,14 +86,29 @@ async def _fetch_page(client: httpx.AsyncClient, url: str) -> str:
 
 
 def _extract_text(html: str, url: str) -> tuple[str, str]:
-    """Extract clean text + title from HTML."""
+    """Extract clean text + title from HTML using Trafilatura with fallback to BeautifulSoup."""
+    import trafilatura
+    
+    # 1. Trafilatura attempts
+    try:
+        extracted = trafilatura.extract(
+            html, url=url, include_links=False, include_images=False, include_tables=True
+        )
+        if extracted and len(extracted.strip()) > 100:
+            soup = BeautifulSoup(html, "html.parser")
+            title = soup.title.string.strip() if soup.title and soup.title.string else url
+            return title, extracted.strip()
+    except Exception as e:
+        logger.warning(f"Trafilatura failed on {url}, falling back to BeautifulSoup: {e}")
+
+    # 2. BS4 Fallback
     soup = BeautifulSoup(html, "html.parser")
 
     # Remove noise
     for tag in soup(["script", "style", "nav", "footer", "header", "aside", "noscript"]):
         tag.decompose()
 
-    title = soup.title.string.strip() if soup.title and soup.title.string else ""
+    title = soup.title.string.strip() if soup.title and soup.title.string else url
 
     # Try <article> or <main> first for higher-quality content
     main = soup.find("article") or soup.find("main") or soup.find("div", {"role": "main"})
@@ -144,7 +163,7 @@ async def scrape_urls(urls: list[str], max_concurrent: int = 5) -> list[ScrapedD
                 logger.warning(f"Failed to scrape {url}: {e}")
                 return None
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(verify=False) as client:
         tasks = [_scrape_one(client, url) for url in urls[: settings.max_scrape_urls]]
         docs = await asyncio.gather(*tasks)
         results = [d for d in docs if d is not None]
@@ -164,3 +183,71 @@ def scrape_urls_tool(urls: list[str]) -> list[dict]:
         future = pool.submit(asyncio.run, scrape_urls(urls))
         docs = future.result()
     return [d.model_dump() for d in docs]
+
+
+def scrape_url(url: str) -> dict:
+    """
+    Synchronous single-URL scraper for use in non-async contexts (e.g. ingest route).
+
+    Returns a dict with 'title' and 'content' keys, or raises on failure.
+    """
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        docs = loop.run_until_complete(scrape_urls([url], max_concurrent=1))
+        loop.close()
+    except Exception as e:
+        raise RuntimeError(f"Scrape failed for {url}: {e}") from e
+
+    if not docs:
+        raise RuntimeError(f"Could not extract content from {url} — site may be blocking scrapers")
+
+    return {"title": docs[0].title, "content": docs[0].content}
+
+
+def scrape_url_metadata_fallback(url: str) -> dict:
+    """
+    Best-effort metadata extraction when full scraping is blocked.
+
+    Returns title + compact content built from meta tags.
+    """
+    try:
+        with httpx.Client(verify=False, follow_redirects=True, timeout=20.0) as client:
+            resp = client.get(url, headers=HEADERS)
+            resp.raise_for_status()
+            html = resp.text
+    except Exception as e:
+        raise RuntimeError(f"Metadata fetch failed for {url}: {e}") from e
+
+    soup = BeautifulSoup(html, "html.parser")
+    title = (soup.title.string.strip() if soup.title and soup.title.string else url)
+
+    def _meta(name: str = "", prop: str = "") -> str:
+        if name:
+            tag = soup.find("meta", attrs={"name": name})
+            if tag and tag.get("content"):
+                return str(tag.get("content")).strip()
+        if prop:
+            tag = soup.find("meta", attrs={"property": prop})
+            if tag and tag.get("content"):
+                return str(tag.get("content")).strip()
+        return ""
+
+    description = _meta(name="description") or _meta(prop="og:description")
+    og_title = _meta(prop="og:title")
+    if og_title:
+        title = og_title
+
+    content_parts = [f"Title: {title}"]
+    if description:
+        content_parts.append(f"Description: {description}")
+
+    keywords = _meta(name="keywords")
+    if keywords:
+        content_parts.append(f"Keywords: {keywords}")
+
+    content = "\n".join(content_parts).strip()
+    if len(content) < 20:
+        raise RuntimeError(f"Could not extract meaningful metadata from {url}")
+
+    return {"title": title, "content": content}

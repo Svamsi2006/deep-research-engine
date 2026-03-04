@@ -32,7 +32,7 @@ export default function SourcesPanel({ sources }: SourcesPanelProps) {
             </h3>
             {sources.map((src, i) => (
                 <div
-                    key={src.source_id}
+                    key={src.source_id || src.title || String(i)}
                     className="flex items-start gap-3 rounded-lg border border-border bg-muted/30 p-3"
                 >
                     <span className="shrink-0 w-6 h-6 rounded-full bg-accent/20 text-accent text-xs font-bold flex items-center justify-center">
@@ -42,9 +42,27 @@ export default function SourcesPanel({ sources }: SourcesPanelProps) {
                         <p className="text-sm font-medium text-foreground truncate">
                             {src.title}
                         </p>
-                        <p className="text-xs text-muted-foreground font-mono mt-0.5">
-                            ID: {src.source_id.slice(0, 8)}
+                        <p className="text-xs text-muted-foreground font-mono mt-0.5 mb-2 break-all">
+                            {src.url ? (
+                                <a href={src.url} target="_blank" rel="noreferrer" className="underline hover:text-foreground">
+                                    {src.url}
+                                </a>
+                            ) : (
+                                <>ID: {(src.source_id || "").slice(0, 24)}</>
+                            )}
                         </p>
+                        {src.snippets && src.snippets.length > 0 && (
+                            <div className="space-y-2 mt-2">
+                                {src.snippets.map((snippet, idx) => (
+                                    <div
+                                        key={idx}
+                                        className="bg-background/50 rounded p-2 text-[11px] text-muted-foreground leading-relaxed border border-border/50 italic"
+                                    >
+                                        &quot;{snippet.length > 300 ? snippet.slice(0, 300) + '...' : snippet}&quot;
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                     <ExternalLink className="w-3.5 h-3.5 text-muted-foreground shrink-0 mt-0.5" />
                 </div>

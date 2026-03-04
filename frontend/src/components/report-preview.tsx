@@ -1,14 +1,169 @@
 "use client";
 
-import React, { useCallback } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Copy, Download, FileText, AlertTriangle } from "lucide-react";
+import {
+  Copy,
+  Download,
+  FileText,
+  AlertTriangle,
+  Search,
+  Brain,
+  Globe,
+  Sparkles,
+  BookOpen,
+  CheckCircle2,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { ThoughtEvent } from "@/lib/sse-client";
+
+/* ── Pipeline stage definitions ─────────────────────────────────────── */
+const PIPELINE_STAGES = [
+  { key: "plan", label: "Planning research", icon: Brain },
+  { key: "retriev", label: "Retrieving sources", icon: Search },
+  { key: "web_search", label: "Searching the web", icon: Globe },
+  { key: "writ", label: "Writing report", icon: Sparkles },
+  { key: "judg", label: "Evaluating quality", icon: CheckCircle2 },
+  { key: "refin", label: "Refining report", icon: BookOpen },
+] as const;
+
+function stageStatus(
+  stageKey: string,
+  thoughts: ThoughtEvent[]
+): "pending" | "running" | "completed" | "error" {
+  const matching = thoughts.filter(
+    (t) => t.node?.toLowerCase().includes(stageKey)
+  );
+  if (matching.length === 0) return "pending";
+  const last = matching[matching.length - 1];
+  if (last.status === "completed") return "completed";
+  if (last.status === "error") return "error";
+  return "running";
+}
+
+/* ── Loading animation component ────────────────────────────────────── */
+function ResearchLoadingAnimation({
+  thoughts,
+}: {
+  thoughts: ThoughtEvent[];
+}) {
+  const [dots, setDots] = useState("");
+
+  useEffect(() => {
+    const id = setInterval(() => setDots((d) => (d.length >= 3 ? "" : d + ".")), 500);
+    return () => clearInterval(id);
+  }, []);
+
+  // Find the current active stage message
+  const activeThought = [...thoughts].reverse().find(
+    (t) => t.status === "running" || t.status === "completed"
+  );
+
+  return (
+    <div className="flex h-full items-center justify-center p-8">
+      <div className="w-full max-w-md space-y-8">
+        {/* Central animation */}
+        <div className="flex flex-col items-center gap-5">
+          {/* Animated rings */}
+          <div className="relative w-20 h-20">
+            <div className="absolute inset-0 rounded-full border-2 border-accent/20 animate-ping" />
+            <div className="absolute inset-2 rounded-full border-2 border-accent/30 animate-pulse" />
+            <div
+              className="absolute inset-0 rounded-full border-t-2 border-accent"
+              style={{ animation: "spin 1.5s linear infinite" }}
+            />
+            <div
+              className="absolute inset-3 rounded-full border-t-2 border-accent/60"
+              style={{ animation: "spin 2s linear infinite reverse" }}
+            />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Brain className="w-6 h-6 text-accent animate-pulse" />
+            </div>
+          </div>
+
+          <div className="text-center space-y-1">
+            <p className="text-sm font-medium text-foreground">
+              Generating deep research report{dots}
+            </p>
+            {activeThought && (
+              <p className="text-xs text-muted-foreground animate-pulse truncate max-w-xs">
+                {activeThought.message}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Pipeline step tracker */}
+        <div className="space-y-2">
+          {PIPELINE_STAGES.map((stage) => {
+            const status = stageStatus(stage.key, thoughts);
+            const Icon = stage.icon;
+            return (
+              <div
+                key={stage.key}
+                className={cn(
+                  "flex items-center gap-3 rounded-lg px-3 py-2 text-xs transition-all duration-300",
+                  status === "running" && "bg-accent/10 border border-accent/30",
+                  status === "completed" && "bg-emerald-500/5",
+                  status === "error" && "bg-red-500/10 border border-red-500/30",
+                  status === "pending" && "opacity-40"
+                )}
+              >
+                <div
+                  className={cn(
+                    "flex items-center justify-center w-6 h-6 rounded-full transition-colors",
+                    status === "running" && "bg-accent/20 text-accent",
+                    status === "completed" && "bg-emerald-500/20 text-emerald-400",
+                    status === "error" && "bg-red-500/20 text-red-400",
+                    status === "pending" && "bg-muted text-muted-foreground"
+                  )}
+                >
+                  {status === "completed" ? (
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                  ) : status === "running" ? (
+                    <Icon className="w-3.5 h-3.5 animate-pulse" />
+                  ) : (
+                    <Icon className="w-3.5 h-3.5" />
+                  )}
+                </div>
+                <span
+                  className={cn(
+                    "font-medium",
+                    status === "running" && "text-accent",
+                    status === "completed" && "text-emerald-400",
+                    status === "error" && "text-red-400",
+                    status === "pending" && "text-muted-foreground"
+                  )}
+                >
+                  {stage.label}
+                </span>
+                {status === "running" && (
+                  <div className="ml-auto flex gap-0.5">
+                    <span className="w-1 h-1 rounded-full bg-accent animate-bounce" style={{ animationDelay: "0ms" }} />
+                    <span className="w-1 h-1 rounded-full bg-accent animate-bounce" style={{ animationDelay: "150ms" }} />
+                    <span className="w-1 h-1 rounded-full bg-accent animate-bounce" style={{ animationDelay: "300ms" }} />
+                  </div>
+                )}
+                {status === "error" && (
+                  <span className="ml-auto text-[10px] text-red-400">failed</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Main component ─────────────────────────────────────────────────── */
 
 interface ReportPreviewProps {
   content: string;
   isStreaming: boolean;
+  isRunning: boolean;
+  thoughts: ThoughtEvent[];
   qualityWarning: boolean;
   evaluationScore: number | null;
 }
@@ -16,6 +171,8 @@ interface ReportPreviewProps {
 export default function ReportPreview({
   content,
   isStreaming,
+  isRunning,
+  thoughts,
   qualityWarning,
   evaluationScore,
 }: ReportPreviewProps) {
@@ -32,6 +189,11 @@ export default function ReportPreview({
     a.click();
     URL.revokeObjectURL(url);
   }, [content]);
+
+  // Show loading animation when running but no content yet
+  if (!content && isRunning) {
+    return <ResearchLoadingAnimation thoughts={thoughts} />;
+  }
 
   if (!content && !isStreaming) {
     return (

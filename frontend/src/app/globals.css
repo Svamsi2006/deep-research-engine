@@ -132,3 +132,8 @@ body {
   background: transparent !important;
   color: #e4e4e7 !important;
 }
+
+/* Spin animation for loading rings */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import uuid
@@ -17,6 +18,9 @@ from app.database import Source, ChunkRow, ReportRow, get_session_factory
 from app.llm_gateway import call_llm
 from app.pipeline import run_deep_report, PipelineResult
 from app.flashcards import generate_flashcards, flashcards_to_csv, flashcards_to_json
+
+# Suppress noisy asyncio socket.send warnings (happen on normal client disconnect)
+logging.getLogger("asyncio").setLevel(logging.ERROR)
 from app.tools.indexer import IndexChunk
 
 logger = logging.getLogger(__name__)
@@ -70,38 +74,33 @@ def _done(report_id: str, score: float = 1.0, **extra) -> dict:
     })
 
 
-async def _load_chunks(source_ids: list[str]) -> tuple[list[IndexChunk], dict[str, str]]:
-    """Load chunks and source titles from DB for given source_ids."""
-    chunks: list[IndexChunk] = []
-    titles: dict[str, str] = {}
+def _provider_has_runtime_key(settings) -> bool:
+    provider = (settings.ai_provider or "").strip().lower()
+    if provider == "ollama":
+        return True
 
-    if not source_ids:
-        return chunks, titles
+    if settings.ai_api_key:
+        return True
 
-    session_factory = get_session_factory()
-    async with session_factory() as session:
-        from sqlalchemy import select
+    provider_keys = {
+        "openrouter": settings.openrouter_api_key,
+        "groq": settings.groq_api_key,
+        "openai": settings.openai_api_key,
+        "gemini": settings.google_api_key,
+        "deepseek": settings.deepseek_api_key,
+        "grok": settings.grok_api_key,
+    }
+    return bool(provider_keys.get(provider, ""))
 
-        # Load sources
-        stmt = select(Source).where(Source.id.in_(source_ids))
-        result = await session.execute(stmt)
-        sources = result.scalars().all()
-        for s in sources:
-            titles[s.id] = s.title
 
-        # Load chunks
-        stmt = select(ChunkRow).where(ChunkRow.source_id.in_(source_ids))
-        result = await session.execute(stmt)
-        for c in result.scalars().all():
-            chunks.append(IndexChunk(
-                id=c.id,
-                source_id=c.source_id,
-                content=c.content,
-                chunk_index=c.chunk_index,
-                section_heading=c.section_heading,
-            ))
+def _has_any_llm_config(settings) -> bool:
+    return _provider_has_runtime_key(settings) or bool(settings.openrouter_api_key) or bool(settings.groq_api_key)
 
-    return chunks, titles
+
+async def _load_chunks(source_ids: list[str]) -> tuple[list[IndexChunk], dict[str, str], dict[str, str]]:
+    """Load chunks, source titles, and origin URLs from DB."""
+    from app.dal import get_source_titles_and_chunks
+    return await get_source_titles_and_chunks(source_ids)
 
 
 # ---------------------------------------------------------------------------
@@ -117,49 +116,97 @@ If the question needs deep research, suggest using "Deep Report" mode.
 """
 
 
-@router.post("/api/answer")
+@router.post("/answer")
 async def answer(request: AnswerRequest):
-    """Quick answer — direct LLM call, optionally with source context."""
+    """Quick answer — direct LLM call, optionally with source context + web search."""
     settings = get_settings()
-    if not settings.openrouter_api_key and not settings.groq_api_key:
+    if not _has_any_llm_config(settings):
         raise HTTPException(status_code=500, detail="No LLM API key configured")
 
     report_id = str(uuid.uuid4())
 
     async def stream():
-        yield _thought("answer", f"⚡ Generating quick answer...", "running")
-
-        # Load source context if provided
-        context = ""
-        if request.source_ids:
-            chunks, titles = await _load_chunks(request.source_ids)
-            if chunks:
-                context = "\n\n---\n\n".join(
-                    f"[{c.section_heading}] {c.content[:500]}" for c in chunks[:10]
-                )
-                context = f"\n\nContext from your sources:\n{context}"
-
         try:
-            messages = [
-                {"role": "system", "content": ANSWER_SYSTEM},
-                {"role": "user", "content": request.question + context},
-            ]
-            result = call_llm(messages, purpose="answer", max_tokens=2048, temperature=0.5)
+            yield _thought("answer", f"🔍 Searching sources...", "running")
 
-            yield _thought("answer", f"✅ Response ready ({len(result.text)} chars, via {result.provider})", "completed")
+            # Load source context if provided
+            context = ""
+            sources_used = []
+            if request.source_ids:
+                chunks, titles, origins = await _load_chunks(request.source_ids)
+                if chunks:
+                    # Cap to 5 chunks, 300 chars each to stay within token budget
+                    context = "\n\n---\n\n".join(
+                        f"[{c.section_heading}] {c.content[:300]}" for c in chunks[:5]
+                    )
+                    context = f"\n\nContext from your sources:\n{context}"
+                    sources_used = [
+                        {"source_id": sid, "title": t, "url": origins.get(sid, ""), "type": "document"}
+                        for sid, t in titles.items()
+                    ]
 
-            # Stream as report chunks
-            text = result.text
-            chunk_size = 200
-            for i in range(0, len(text), chunk_size):
+            # Web search if enabled
+            web_results = []
+            if request.allow_web_search:
+                yield _thought("answer", f"🌐 Searching web for: {request.question}", "running")
+                try:
+                    from app.tools.search import search_web
+                    web_results = search_web(request.question, max_results=5)
+                    if web_results:
+                        web_snippet = "\n\n---\n\nWeb Search Results:\n"
+                        for i, result in enumerate(web_results[:3], 1):
+                            web_snippet += f"\n[Web {i}] {result.get('title', 'Result')}\n"
+                            web_snippet += f"URL: {result.get('url', '')}\n"
+                            web_snippet += f"Snippet: {result.get('snippet', '')[:300]}\n"
+                        context += web_snippet
+                        sources_used.extend([{"title": r.get("title"), "url": r.get("url"), "type": "web"} for r in web_results])
+                except Exception as e:
+                    logger.warning(f"Web search failed: {e}")
+
+            yield _thought("answer", f"✍️  Generating answer...", "running")
+
+            try:
+                messages = [
+                    {"role": "system", "content": ANSWER_SYSTEM},
+                    {"role": "user", "content": request.question + context},
+                ]
+                result = call_llm(messages, purpose="answer", max_tokens=1500, temperature=0.5)
+
+                yield _thought("answer", f"✅ Response ready ({len(result.text)} chars, via {result.provider})", "completed")
+
+                # Use Perplexity-style formatting
+                from app.formatting import format_answer_with_sources
+                formatted = format_answer_with_sources(
+                    result.text,
+                    sources_used,
+                    confidence=0.95,
+                    search_results=web_results
+                )
+
+                # Stream answer content
                 yield _sse("report", {
-                    "content": text[i:i + chunk_size],
-                    "done": i + chunk_size >= len(text),
+                    "content": formatted["answer"],
+                    "done": True,
                 })
 
+                # Emit structured sources for the Sources panel
+                all_sources = sources_used + [
+                    {"title": r.get("title", "Web Result"), "url": r.get("url", ""), "type": "web"}
+                    for r in web_results
+                ]
+                if all_sources:
+                    yield _sse("sources", {"sources": all_sources})
+
+            except Exception as e:
+                logger.error(f"LLM call failed: {e}")
+                yield _sse("error", {"message": str(e), "node": "answer"})
+
+        except asyncio.CancelledError:
+            logger.info("Answer stream cancelled by client disconnect")
+            return
         except Exception as e:
-            logger.error(f"Answer failed: {e}")
-            yield _sse("error", {"message": str(e), "node": "answer"})
+            logger.error(f"Answer stream failed: {e}")
+            yield _sse("error", {"message": str(e)})
 
         yield _done(report_id)
 
@@ -171,11 +218,11 @@ async def answer(request: AnswerRequest):
 # ---------------------------------------------------------------------------
 
 
-@router.post("/api/report")
+@router.post("/report")
 async def report(request: ReportRequest):
     """Deep report — runs full Planner→Retrieve→Write→Judge→Refine pipeline."""
     settings = get_settings()
-    if not settings.openrouter_api_key and not settings.groq_api_key:
+    if not _has_any_llm_config(settings):
         raise HTTPException(status_code=500, detail="No LLM API key configured")
 
     report_id = str(uuid.uuid4())
@@ -184,16 +231,17 @@ async def report(request: ReportRequest):
         yield _thought("system", f"🧠 Starting deep report pipeline: \"{request.question}\"", "running")
 
         # Load chunks from ingested sources
-        chunks, titles = await _load_chunks(request.source_ids)
+        chunks, titles, origins = await _load_chunks(request.source_ids)
 
         yield _thought("system", f"📦 Loaded {len(chunks)} chunks from {len(titles)} sources", "completed")
 
         try:
-            # Run the pipeline (synchronous, but streams steps)
-            result, step_events = run_deep_report(
+            # Run the pipeline (which now supports async web search)
+            result, step_events = await run_deep_report(
                 question=request.question,
                 chunks=chunks,
                 source_titles=titles,
+                source_origins=origins,
                 allow_web_search=request.allow_web_search,
                 depth=request.depth,
             )
@@ -224,23 +272,23 @@ async def report(request: ReportRequest):
 
             # Persist
             try:
-                session_factory = get_session_factory()
-                async with session_factory() as session:
-                    row = ReportRow(
-                        id=report_id,
-                        question=request.question,
-                        report_md=result.report_md,
-                        evaluation_score=result.evaluation_score,
-                    )
-                    row.sources_used = result.sources_used
-                    row.pipeline_log = step_events
-                    session.add(row)
-                    await session.commit()
+                from app.dal import save_report
+                await save_report(
+                    report_id=report_id,
+                    question=request.question,
+                    report_md=result.report_md,
+                    evaluation_score=result.evaluation_score,
+                    sources_used=result.sources_used,
+                    pipeline_log=step_events
+                )
             except Exception as e:
                 logger.warning(f"Failed to persist report: {e}")
 
             yield _done(report_id, score=result.evaluation_score)
 
+        except asyncio.CancelledError:
+            logger.info("Report stream cancelled by client disconnect")
+            return
         except Exception as e:
             logger.exception(f"Pipeline error: {e}")
             yield _sse("error", {"message": str(e), "node": "pipeline"})
@@ -254,11 +302,11 @@ async def report(request: ReportRequest):
 # ---------------------------------------------------------------------------
 
 
-@router.post("/api/flashcards")
+@router.post("/flashcards")
 async def flashcards(request: FlashcardRequest):
     """Generate flashcards from a report."""
     settings = get_settings()
-    if not settings.openrouter_api_key and not settings.groq_api_key:
+    if not _has_any_llm_config(settings):
         raise HTTPException(status_code=500, detail="No LLM API key configured")
 
     # Get report content
@@ -266,16 +314,12 @@ async def flashcards(request: FlashcardRequest):
 
     if not report_md and request.report_id:
         try:
-            session_factory = get_session_factory()
-            async with session_factory() as session:
-                from sqlalchemy import select
-                stmt = select(ReportRow).where(ReportRow.id == request.report_id)
-                result = await session.execute(stmt)
-                row = result.scalar_one_or_none()
-                if row:
-                    report_md = row.report_md
-                    if not request.question:
-                        request.question = row.question
+            from app.dal import get_report_by_id
+            row = await get_report_by_id(request.report_id)
+            if row:
+                report_md = row.report_md
+                if not request.question:
+                    request.question = row.question
         except Exception as e:
             logger.error(f"Failed to load report: {e}")
 
@@ -304,17 +348,14 @@ async def flashcards(request: FlashcardRequest):
 
             # Persist flashcards to report
             try:
-                session_factory = get_session_factory()
-                async with session_factory() as session:
-                    from sqlalchemy import select, update
-                    stmt = update(ReportRow).where(ReportRow.id == report_id).values(
-                        flashcards_json=json.dumps(cards_json)
-                    )
-                    await session.execute(stmt)
-                    await session.commit()
+                from app.dal import update_report_flashcards
+                await update_report_flashcards(report_id, cards_json)
             except Exception:
                 pass
 
+        except asyncio.CancelledError:
+            logger.info("Flashcards stream cancelled by client disconnect")
+            return
         except Exception as e:
             logger.error(f"Flashcard generation failed: {e}")
             yield _sse("error", {"message": str(e), "node": "flashcards"})

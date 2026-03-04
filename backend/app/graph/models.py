@@ -1,4 +1,4 @@
-"""Pydantic models for the Engineering Oracle pipeline."""
+"""Shared Pydantic models / DTOs used across the pipeline."""
 
 from __future__ import annotations
 
@@ -13,15 +13,6 @@ from pydantic import BaseModel, Field
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
-
-class NodeName(str, Enum):
-    DISCOVERY = "discovery"
-    HARVEST = "harvest"
-    CLEAN = "clean"
-    REASONING = "reasoning"
-    EVALUATION = "evaluation"
-    SYNTHESIS = "synthesis"
-
 
 class UrlCategory(str, Enum):
     DOC = "doc"
@@ -75,23 +66,3 @@ class Chunk(BaseModel):
     source_url: str = ""
     source_type: UrlCategory = UrlCategory.DOC
     metadata: dict = Field(default_factory=dict)
-
-
-class ThoughtEvent(BaseModel):
-    """An event emitted to the UI's thought-trace timeline."""
-    node: NodeName
-    message: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
-    status: str = "running"  # "running" | "completed" | "error"
-    metadata: dict = Field(default_factory=dict)
-
-
-class ReportRecord(BaseModel):
-    """A saved report for persistence."""
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    query: str
-    report: str = ""
-    evaluation_score: float = 0.0
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    retry_count: int = 0
-    thought_trace: list[ThoughtEvent] = Field(default_factory=list)

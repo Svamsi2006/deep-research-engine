@@ -132,6 +132,7 @@ export default function ResearchInput({
       {/* Question */}
       <div className="p-4 space-y-3">
         <textarea
+          suppressHydrationWarning
           data-tour="question"
           value={question}
           onChange={(e) => setQuestion(e.target.value)}

@@ -4,8 +4,7 @@ import React, { useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import {
   Zap,
-  PanelLeftClose,
-  PanelLeftOpen,
+  Settings,
   FileText,
   BookOpen,
   CreditCard,
@@ -14,10 +13,10 @@ import {
   HelpCircle,
 } from "lucide-react";
 import ResearchInput from "@/components/chat";
-import ThoughtTrace from "@/components/thought-trace";
 import ReportPreview from "@/components/report-preview";
 import SourcesPanel from "@/components/sources-panel";
 import FlashcardsPanel from "@/components/flashcards-panel";
+import SettingsDialog from "@/components/settings-dialog";
 import OnboardingTour, { resetTour } from "@/components/onboarding-tour";
 import { cn } from "@/lib/utils";
 import {
@@ -39,7 +38,7 @@ export default function Home() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [qualityWarning, setQualityWarning] = useState(false);
   const [evaluationScore, setEvaluationScore] = useState<number | null>(null);
-  const [showTrace, setShowTrace] = useState(true);
+  const [showSettings, setShowSettings] = useState(false);
   const [activeTab, setActiveTab] = useState<OutputTab>("report");
   const [sources, setSources] = useState<SourceInfo[]>([]);
   const [flashcards, setFlashcards] = useState<FlashcardData[]>([]);
@@ -198,6 +197,7 @@ export default function Home() {
     <div className="h-screen flex flex-col">
       {/* Onboarding Tour */}
       <OnboardingTour />
+      <SettingsDialog open={showSettings} onClose={() => setShowSettings(false)} />
 
       {/* Top bar */}
       <header className="flex items-center justify-between border-b border-border px-4 py-2.5 bg-background/80 backdrop-blur-sm">
@@ -220,22 +220,18 @@ export default function Home() {
             About
           </Link>
           <button
+            onClick={() => setShowSettings(true)}
+            className="rounded p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            title="Settings"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
+          <button
             onClick={resetTour}
             className="rounded p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             title="Restart guided tour"
           >
             <HelpCircle className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => setShowTrace(!showTrace)}
-            className="rounded p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-            title={showTrace ? "Hide trace" : "Show trace"}
-          >
-            {showTrace ? (
-              <PanelLeftClose className="w-4 h-4" />
-            ) : (
-              <PanelLeftOpen className="w-4 h-4" />
-            )}
           </button>
         </div>
       </header>
@@ -246,7 +242,7 @@ export default function Home() {
         <div
           className={cn(
             "flex flex-col border-b md:border-b-0 md:border-r border-border transition-all duration-200 shrink-0",
-            showTrace ? "md:w-[480px]" : "md:w-[380px]"
+            "md:w-[380px]"
           )}
         >
           {/* Research Input */}
@@ -269,12 +265,7 @@ export default function Home() {
             </div>
           )}
 
-          {/* Steps timeline */}
-          {showTrace && (
-            <div className="h-[280px] border-t border-border bg-background/50 overflow-hidden" data-tour="trace">
-              <ThoughtTrace thoughts={thoughts} isRunning={isRunning} />
-            </div>
-          )}
+          {/* Agent trace removed per UX request */}
         </div>
 
         {/* Right panel: Tabs */}
@@ -327,6 +318,8 @@ export default function Home() {
               <ReportPreview
                 content={reportContent}
                 isStreaming={isStreaming}
+                isRunning={isRunning}
+                thoughts={thoughts}
                 qualityWarning={qualityWarning}
                 evaluationScore={evaluationScore}
               />

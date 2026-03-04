@@ -1,16 +1,25 @@
 /** @type {import('next').NextConfig} */
+const BACKEND_URL = (process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/$/, "");
+
 const nextConfig = {
   reactStrictMode: true,
 
-  // Server-side env vars for Vercel serverless route handlers.
-  // Set these in Vercel Dashboard → Settings → Environment Variables.
-  // OPENROUTER_API_KEY and GROQ_API_KEY are REQUIRED for LLM calls.
-  // BACKEND_URL is NO LONGER NEEDED — all LLM calls happen on Vercel now.
+  // Proxy all /api/* requests to the Python backend in development.
+  // In production (Vercel), set NEXT_PUBLIC_API_URL to your Railway/Render backend URL
+  // and calls will go there directly from the client.
+  async rewrites() {
+    return [
+      {
+        // Only proxy in dev — the frontend calls NEXT_PUBLIC_API_URL directly in prod
+        source: "/api/:path*",
+        destination: `${BACKEND_URL}/api/:path*`,
+      },
+    ];
+  },
+
+  // Expose only the API URL to the client
   env: {
-    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || "",
-    GROQ_API_KEY: process.env.GROQ_API_KEY || "",
-    OPENROUTER_MODEL: process.env.OPENROUTER_MODEL || "deepseek/deepseek-chat-v3-0324:free",
-    GROQ_MODEL: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000",
   },
 };
 

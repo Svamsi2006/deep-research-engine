@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -73,10 +73,14 @@ app.add_middleware(
 # Global error handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.exception(f"Unhandled error: {exc}")
+    if isinstance(exc, HTTPException):
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+        
+    logger.exception(f"Unhandled server error: {exc}")
+    # Protect internal stack traces from leaking to the client
     return JSONResponse(
         status_code=500,
-        content={"detail": f"Internal server error: {str(exc)}"},
+        content={"detail": "An internal server error occurred. Please try again later."},
     )
 
 
@@ -95,6 +99,8 @@ async def health():
 # Register routes
 from app.routes.chat import router as chat_router
 from app.routes.ingest import router as ingest_router
+from app.routes.settings import router as settings_router
 
 app.include_router(chat_router, prefix="/api")
 app.include_router(ingest_router, prefix="/api")
+app.include_router(settings_router, prefix="/api")

@@ -8,6 +8,7 @@ from datetime import datetime
 from sqlalchemy import Column, DateTime, Float, Integer, String, Text, ForeignKey
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker, relationship
+from sqlalchemy.pool import NullPool
 
 
 class Base(DeclarativeBase):
@@ -35,7 +36,7 @@ class Source(Base):
 
 
 class ChunkRow(Base):
-    """A text chunk from a source, used for BM25 retrieval."""
+    """A text chunk from a source, used for hybrid BM25 + vector retrieval."""
     __tablename__ = "chunks"
 
     id = Column(String, primary_key=True)
@@ -44,6 +45,7 @@ class ChunkRow(Base):
     chunk_index = Column(Integer, default=0)
     section_heading = Column(String, default="")
     char_count = Column(Integer, default=0)
+    embedding = Column(Text, default=None)  # JSON-encoded float list (sentence-transformers)
 
     source = relationship("Source", back_populates="chunks")
 
@@ -113,7 +115,11 @@ async def init_db(database_url: str):
     elif database_url.startswith("postgresql://") and not database_url.startswith("postgresql+asyncpg://"):
         database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-    _engine = create_async_engine(database_url, echo=False)
+    engine_kwargs = {"echo": False}
+    if database_url.startswith("sqlite+"):
+        engine_kwargs["poolclass"] = NullPool
+
+    _engine = create_async_engine(database_url, **engine_kwargs)
     _session_factory = sessionmaker(_engine, class_=AsyncSession, expire_on_commit=False)
 
     async with _engine.begin() as conn:
