@@ -16,6 +16,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import FlashcardGeneratorButton from "./flashcard-generator-button";
 import type { ThoughtEvent } from "@/lib/sse-client";
 
 /* ── Pipeline stage definitions ─────────────────────────────────────── */
@@ -166,6 +167,17 @@ interface ReportPreviewProps {
   thoughts: ThoughtEvent[];
   qualityWarning: boolean;
   evaluationScore: number | null;
+  reportId?: string;
+  question?: string;
+  onGenerateFlashcards?: (
+    reportId: string,
+    reportContent: string,
+    question: string,
+    callbacks: {
+      onFlashcards: (event: { cards: any[]; csv: string }) => void;
+      onError: (error: string) => void;
+    }
+  ) => Promise<void>;
 }
 
 export default function ReportPreview({
@@ -175,6 +187,9 @@ export default function ReportPreview({
   thoughts,
   qualityWarning,
   evaluationScore,
+  reportId = "",
+  question = "",
+  onGenerateFlashcards,
 }: ReportPreviewProps) {
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(content);
@@ -212,8 +227,8 @@ export default function ReportPreview({
   return (
     <div className="flex h-full flex-col">
       {/* Header bar */}
-      <div className="flex items-center justify-between border-b border-border px-4 py-2">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between border-b border-border px-4 py-3">
+        <div className="flex items-center gap-3">
           <FileText className="w-4 h-4 text-accent" />
           <span className="text-sm font-medium">Report</span>
           {evaluationScore !== null && (
@@ -234,7 +249,15 @@ export default function ReportPreview({
             </span>
           )}
         </div>
-        <div className="flex gap-1">
+        <div className="flex items-center gap-2">
+          {reportId && content && onGenerateFlashcards && (
+            <FlashcardGeneratorButton
+              reportContent={content}
+              reportId={reportId}
+              question={question}
+              onGenerateFlashcards={onGenerateFlashcards}
+            />
+          )}
           <button
             onClick={handleCopy}
             className="rounded p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
@@ -265,11 +288,110 @@ export default function ReportPreview({
 
       {/* Markdown content */}
       <div className="flex-1 overflow-y-auto px-6 py-4">
+        <style>{`
+          .markdown-body {
+            color: #000000;
+            background-color: transparent;
+          }
+          .markdown-body h1,
+          .markdown-body h2,
+          .markdown-body h3,
+          .markdown-body h4,
+          .markdown-body h5,
+          .markdown-body h6 {
+            color: #1a1a1a;
+            font-weight: 600;
+            margin-top: 1.5em;
+            margin-bottom: 0.5em;
+            border-bottom: none;
+          }
+          .markdown-body p {
+            color: #000000;
+            line-height: 1.6;
+            margin-bottom: 1em;
+          }
+          .markdown-body a {
+            color: #4F46E5;
+            text-decoration: none;
+            font-weight: 500;
+          }
+          .markdown-body a:hover {
+            text-decoration: underline;
+            color: #6366F1;
+          }
+          .markdown-body code {
+            color: #1a1a1a;
+            background-color: #f5f5f5;
+            padding: 0.2em 0.4em;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+          }
+          .markdown-body pre {
+            background-color: #f9f9f9;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 1em;
+            overflow-x: auto;
+          }
+          .markdown-body pre code {
+            background-color: transparent;
+            color: #1a1a1a;
+            padding: 0;
+          }
+          .markdown-body blockquote {
+            color: #555555;
+            border-left: 4px solid #4F46E5;
+            padding-left: 1em;
+            margin-left: 0;
+            opacity: 0.9;
+          }
+          .markdown-body table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 1em 0;
+          }
+          .markdown-body table th,
+          .markdown-body table td {
+            border: 1px solid #d0d0d0;
+            padding: 0.75em;
+            text-align: left;
+          }
+          .markdown-body table th {
+            background-color: #f5f5f5;
+            color: #000000;
+            font-weight: 600;
+          }
+          .markdown-body table tr:nth-child(even) {
+            background-color: #fafafa;
+          }
+          .markdown-body ul,
+          .markdown-body ol {
+            color: #000000;
+            margin: 1em 0;
+            padding-left: 2em;
+          }
+          .markdown-body li {
+            margin-bottom: 0.5em;
+          }
+          .markdown-body strong {
+            color: #1a1a1a;
+            font-weight: 600;
+          }
+          .markdown-body em {
+            color: #333333;
+            font-style: italic;
+          }
+          .markdown-body hr {
+            border: none;
+            border-top: 1px solid #e0e0e0;
+            margin: 1.5em 0;
+          }
+        `}</style>
         <div className="markdown-body max-w-none">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
         </div>
         {isStreaming && (
-          <span className="inline-block w-2 h-4 bg-accent animate-pulse ml-0.5 align-baseline" />
+          <span className="inline-block w-2 h-4 bg-[#4F46E5] animate-pulse ml-0.5 align-baseline" />
         )}
       </div>
     </div>

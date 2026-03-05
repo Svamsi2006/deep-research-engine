@@ -100,7 +100,9 @@ async def health():
 from app.routes.chat import router as chat_router
 from app.routes.ingest import router as ingest_router
 from app.routes.settings import router as settings_router
+from app.routes.users import router as users_router
 
 app.include_router(chat_router, prefix="/api")
 app.include_router(ingest_router, prefix="/api")
 app.include_router(settings_router, prefix="/api")
+app.include_router(users_router, prefix="/api")

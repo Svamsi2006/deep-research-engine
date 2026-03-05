@@ -97,6 +97,84 @@ class ReportRow(Base):
         self.pipeline_log_json = json.dumps(value, default=str)
 
 
+class User(Base):
+    """A registered user (anonymous or authenticated)."""
+    __tablename__ = "users"
+
+    id = Column(String, primary_key=True)
+    email = Column(String, unique=True, nullable=True, index=True)  # Optional for anonymous users
+    name = Column(String, default="")
+    is_anonymous = Column(Integer, default=1)  # 1 = anonymous, 0 = authenticated
+    preferences_json = Column(Text, default="{}")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_active = Column(DateTime, default=datetime.utcnow)
+
+    conversations = relationship("Conversation", back_populates="user", cascade="all, delete-orphan")
+
+    @property
+    def preferences(self) -> dict:
+        try:
+            return json.loads(self.preferences_json)
+        except Exception:
+            return {}
+
+    @preferences.setter
+    def preferences(self, value: dict):
+        self.preferences_json = json.dumps(value, default=str)
+
+
+class Conversation(Base):
+    """A conversation thread containing multiple messages."""
+    __tablename__ = "conversations"
+
+    id = Column(String, primary_key=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    title = Column(String, default="New Research")
+    summary = Column(Text, default="")  # Auto-generated summary of the conversation
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User", back_populates="conversations")
+    messages = relationship("Message", back_populates="conversation", cascade="all, delete-orphan", order_by="Message.created_at")
+
+
+class Message(Base):
+    """A single message in a conversation (user question or AI response)."""
+    __tablename__ = "messages"
+
+    id = Column(String, primary_key=True)
+    conversation_id = Column(String, ForeignKey("conversations.id"), nullable=False, index=True)
+    role = Column(String, nullable=False)  # "user" | "assistant" | "system"
+    content = Column(Text, nullable=False)
+    extra_data_json = Column(Text, default="{}")  # tokens_used, cost_usd, report_id, etc.
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    conversation = relationship("Conversation", back_populates="messages")
+
+    @property
+    def extra_data(self) -> dict:
+        try:
+            return json.loads(self.extra_data_json)
+        except Exception:
+            return {}
+
+    @extra_data.setter
+    def extra_data(self, value: dict):
+        self.extra_data_json = json.dumps(value, default=str)
+
+
+class UserPreference(Base):
+    """Individual user preference key-value pairs."""
+    __tablename__ = "user_preferences"
+
+    id = Column(String, primary_key=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    key = Column(String, nullable=False, index=True)  # "code_examples", "verbose", "source_format"
+    value = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 # ---------------------------------------------------------------------------
 # Engine & session factory (async)
 # ---------------------------------------------------------------------------

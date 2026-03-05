@@ -154,9 +154,23 @@ export function streamAnswer(
   question: string,
   sourceIds: string[],
   callbacks: SSECallbacks,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  userId?: string,
+  conversationId?: string,
+  contextBuffer?: Array<{ role: string; content: string }>
 ) {
-  return streamSSE("/api/answer", { question, source_ids: sourceIds, allow_web_search: false }, callbacks, signal);
+  const body: Record<string, unknown> = { 
+    question, 
+    source_ids: sourceIds, 
+    allow_web_search: false 
+  };
+  if (userId) body.user_id = userId;
+  if (conversationId) body.conversation_id = conversationId;
+  if (contextBuffer && contextBuffer.length > 0) {
+    body.context = contextBuffer;
+  }
+  
+  return streamSSE("/api/answer", body, callbacks, signal);
 }
 
 export function streamReport(
@@ -165,14 +179,24 @@ export function streamReport(
   depth: "quick" | "deep",
   allowWebSearch: boolean,
   callbacks: SSECallbacks,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  userId?: string,
+  conversationId?: string,
+  contextBuffer?: Array<{ role: string; content: string }>
 ) {
-  return streamSSE(
-    "/api/report",
-    { question, source_ids: sourceIds, depth, allow_web_search: allowWebSearch },
-    callbacks,
-    signal
-  );
+  const body: Record<string, unknown> = {
+    question,
+    source_ids: sourceIds,
+    depth,
+    allow_web_search: allowWebSearch,
+  };
+  if (userId) body.user_id = userId;
+  if (conversationId) body.conversation_id = conversationId;
+  if (contextBuffer && contextBuffer.length > 0) {
+    body.context = contextBuffer;
+  }
+  
+  return streamSSE("/api/report", body, callbacks, signal);
 }
 
 export function streamFlashcards(

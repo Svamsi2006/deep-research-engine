@@ -9,6 +9,23 @@ Built with FastAPI + Next.js 15. Uses free-tier LLM models via OpenRouter with G
 
 ---
 
+## ✨ New in V0.4: Modern Chat Interface
+
+**Claude/Gemini-Style UI** — Professional centered chat experience with:
+- **Action Bar** — 5 modes (Deep Research, Web Search, Analyze PDF, Paste URL, Flashcards) above input
+- **Rounded Input** — Oval-shaped chat box (28px radius) with auto-resize textarea
+- **Selection Highlighting** — Active action glows with #4F46E5 accent and shadow effect
+- **Plus Icon Toggle** — Expand/collapse actions with smooth rotation animation
+- **Smart Keyboard** — Enter sends, Shift+Enter adds newline
+- **Dark Theme** — #0D0D0D background, #4F46E5 (Indigo) accent, professional color palette
+- **Centered Layout** — Max-width chat messages with action bar and input at bottom
+- **Attach Button** — Paperclip icon for file uploads (left side of input)
+- **Conditional Send** — Send button enabled only when message is present
+
+📖 [**Implementation Status**](IMPLEMENTATION_STATUS.md) | 📖 [**Roadmap**](next.md)
+
+---
+
 ## Features
 
 - **Deep Research Reports** — Multi-step pipeline generates structured, cited reports with real-time SSE progress streaming
@@ -184,12 +201,18 @@ deep_research_agent/
 │   │   │   ├── about/page.tsx   # About / architecture page
 │   │   │   └── api/             # Next.js API route proxies
 │   │   ├── components/
-│   │   │   ├── chat.tsx         # Main chat interface
-│   │   │   ├── report-preview.tsx  # Report renderer + pipeline animation
-│   │   │   ├── sources-panel.tsx   # Source management sidebar
-│   │   │   ├── flashcards-panel.tsx # Flashcard viewer
-│   │   │   ├── settings-dialog.tsx  # Runtime settings UI
-│   │   │   └── onboarding-tour.tsx  # First-use onboarding
+│   │   │   ├── chat.tsx              # Main chat interface
+│   │   │   ├── modern-sidebar.tsx    # Collapsible sidebar (dark theme)
+│   │   │   ├── modern-header.tsx     # Sticky header (dark theme)
+│   │   │   ├── modern-input.tsx      # Message input with actions (dark theme)
+│   │   │   ├── chat-messages.tsx     # WhatsApp-style message bubbles
+│   │   │   ├── canvas-editor.tsx     # Full-screen document viewer
+│   │   │   ├── report-preview-card.tsx  # Report preview with gradient
+│   │   │   ├── report-preview.tsx    # Report renderer + pipeline animation
+│   │   │   ├── sources-panel.tsx     # Source management sidebar
+│   │   │   ├── flashcards-panel.tsx  # Flashcard viewer
+│   │   │   ├── settings-dialog.tsx   # Runtime settings UI
+│   │   │   └── onboarding-tour.tsx   # First-use onboarding
 │   │   └── lib/
 │   │       ├── sse-client.ts    # SSE stream consumer
 │   │       └── utils.ts         # Tailwind merge utilities

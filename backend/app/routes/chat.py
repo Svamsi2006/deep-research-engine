@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from app.config import get_settings
-from app.database import Source, ChunkRow, ReportRow, get_session_factory
+from app.database import Source, ChunkRow, ReportRow, get_session_factory, User, Conversation, Message
 from app.llm_gateway import call_llm
 from app.pipeline import run_deep_report, PipelineResult
 from app.flashcards import generate_flashcards, flashcards_to_csv, flashcards_to_json
@@ -36,6 +36,8 @@ class AnswerRequest(BaseModel):
     question: str
     source_ids: list[str] = []
     allow_web_search: bool = False
+    user_id: Optional[str] = None
+    conversation_id: Optional[str] = None
 
 
 class ReportRequest(BaseModel):
@@ -43,6 +45,8 @@ class ReportRequest(BaseModel):
     source_ids: list[str] = []
     depth: str = "deep"  # "quick" or "deep"
     allow_web_search: bool = False
+    user_id: Optional[str] = None
+    conversation_id: Optional[str] = None
 
 
 class FlashcardRequest(BaseModel):
@@ -103,6 +107,85 @@ async def _load_chunks(source_ids: list[str]) -> tuple[list[IndexChunk], dict[st
     return await get_source_titles_and_chunks(source_ids)
 
 
+async def _ensure_conversation(user_id: Optional[str], conversation_id: Optional[str], question: str) -> Optional[str]:
+    """Ensure a conversation exists, creating one if needed. Returns conversation_id or None."""
+    if not user_id:
+        return None
+        
+    factory = get_session_factory()
+    async with factory() as session:
+        # If conversation_id provided, verify it exists
+        if conversation_id:
+            conv = await session.get(Conversation, conversation_id)
+            if conv and conv.user_id == user_id:
+                # Update last activity
+                conv.updated_at = datetime.utcnow()
+                await session.commit()
+                return conversation_id
+        
+        # Create new conversation
+        new_conv = Conversation(
+            id=str(uuid.uuid4()),
+            user_id=user_id,
+            title=question[:100],  # Use first 100 chars of question as title
+            summary=None,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+        session.add(new_conv)
+        await session.commit()
+        return new_conv.id
+
+
+async def _save_message(conversation_id: Optional[str], role: str, content: str, extra_data: Optional[dict] = None):
+    """Save a message to the conversation."""
+    if not conversation_id:
+        return
+        
+    factory = get_session_factory()
+    async with factory() as session:
+        message = Message(
+            id=str(uuid.uuid4()),
+            conversation_id=conversation_id,
+            role=role,
+            content=content,
+            extra_data_json=json.dumps(extra_data or {}),
+            created_at=datetime.utcnow()
+        )
+        session.add(message)
+        
+        # Update conversation timestamp
+        conv = await session.get(Conversation, conversation_id)
+        if conv:
+            conv.updated_at = datetime.utcnow()
+        
+        await session.commit()
+
+
+async def _get_conversation_history(conversation_id: Optional[str], limit: int = 10) -> list[dict]:
+    """Get recent messages from conversation for context."""
+    if not conversation_id:
+        return []
+        
+    factory = get_session_factory()
+    async with factory() as session:
+        from sqlalchemy import select
+        stmt = (
+            select(Message)
+            .where(Message.conversation_id == conversation_id)
+            .order_by(Message.created_at.desc())
+            .limit(limit)
+        )
+        result = await session.execute(stmt)
+        messages = result.scalars().all()
+        
+        # Return in chronological order
+        return [
+            {"role": msg.role, "content": msg.content}
+            for msg in reversed(messages)
+        ]
+
+
 # ---------------------------------------------------------------------------
 # POST /api/answer — Quick answer (Brain Router style)
 # ---------------------------------------------------------------------------
@@ -124,8 +207,19 @@ async def answer(request: AnswerRequest):
         raise HTTPException(status_code=500, detail="No LLM API key configured")
 
     report_id = str(uuid.uuid4())
+    
+    # Ensure conversation exists if user_id provided
+    conversation_id = await _ensure_conversation(request.user_id, request.conversation_id, request.question)
+    
+    # Save user message
+    await _save_message(conversation_id, "user", request.question)
+    
+    # Get conversation history for context
+    history = await _get_conversation_history(conversation_id, limit=10)
 
     async def stream():
+        assistant_response = ""  # Track response for saving
+        
         try:
             yield _thought("answer", f"🔍 Searching sources...", "running")
 
@@ -166,11 +260,18 @@ async def answer(request: AnswerRequest):
             yield _thought("answer", f"✍️  Generating answer...", "running")
 
             try:
-                messages = [
-                    {"role": "system", "content": ANSWER_SYSTEM},
-                    {"role": "user", "content": request.question + context},
-                ]
+                # Build messages with conversation history
+                messages = [{"role": "system", "content": ANSWER_SYSTEM}]
+                
+                # Add conversation history (exclude last user message as we're adding it with context)
+                if history and len(history) > 1:
+                    messages.extend(history[:-1])  # Skip the user message we just saved
+                
+                # Add current question with context
+                messages.append({"role": "user", "content": request.question + context})
+                
                 result = call_llm(messages, purpose="answer", max_tokens=1500, temperature=0.5)
+                assistant_response = result.text
 
                 yield _thought("answer", f"✅ Response ready ({len(result.text)} chars, via {result.provider})", "completed")
 
@@ -196,6 +297,15 @@ async def answer(request: AnswerRequest):
                 ]
                 if all_sources:
                     yield _sse("sources", {"sources": all_sources})
+                
+                # Save assistant response to conversation
+                await _save_message(conversation_id, "assistant", formatted["answer"], {
+                    "provider": result.provider,
+                    "tokens_used": result.tokens_used,
+                    "cost_usd": result.cost_usd,
+                    "report_id": report_id,
+                    "sources": sources_used
+                })
 
             except Exception as e:
                 logger.error(f"LLM call failed: {e}")
@@ -226,6 +336,15 @@ async def report(request: ReportRequest):
         raise HTTPException(status_code=500, detail="No LLM API key configured")
 
     report_id = str(uuid.uuid4())
+    
+    # Ensure conversation exists if user_id provided
+    conversation_id = await _ensure_conversation(request.user_id, request.conversation_id, request.question)
+    
+    # Save user message
+    await _save_message(conversation_id, "user", request.question)
+    
+    # Get conversation history for context
+    history = await _get_conversation_history(conversation_id, limit=10)
 
     async def stream():
         yield _thought("system", f"🧠 Starting deep report pipeline: \"{request.question}\"", "running")
@@ -283,6 +402,15 @@ async def report(request: ReportRequest):
                 )
             except Exception as e:
                 logger.warning(f"Failed to persist report: {e}")
+            
+            # Save assistant response to conversation
+            await _save_message(conversation_id, "assistant", result.report_md, {
+                "report_id": report_id,
+                "evaluation_score": result.evaluation_score,
+                "sources": result.sources_used,
+                "tokens_used": getattr(result, 'tokens_used', 0),
+                "cost_usd": getattr(result, 'cost_usd', 0.0)
+            })
 
             yield _done(report_id, score=result.evaluation_score)
 
