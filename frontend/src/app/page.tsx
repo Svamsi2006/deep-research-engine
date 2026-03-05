@@ -32,6 +32,9 @@ import ModernSidebar from "@/components/modern-sidebar";
 import ModernHeader from "@/components/modern-header";
 import ActionBar from "@/components/action-bar";
 import RoundedChatInput from "@/components/rounded-chat-input";
+import PDFUploadDialog from "@/components/pdf-upload-dialog";
+import URLIngestDialog from "@/components/url-ingest-dialog";
+import IngestedSourcesList, { IngestedSource } from "@/components/ingested-sources-list";
 import { useSession } from "@/lib/use-session";
 import { useSessionStorage } from "@/lib/use-session-storage";
 import { cn } from "@/lib/utils";
@@ -100,6 +103,13 @@ export default function Home() {
   const [selectedActions, setSelectedActions] = useState<Array<'deep-research' | 'web-search' | 'analyze-pdf' | 'paste-url' | 'flashcards'>>(['deep-research']);
   const [actionsExpanded, setActionsExpanded] = useState(true);
 
+  // PDF/URL upload state
+  const [showPDFDialog, setShowPDFDialog] = useState(false);
+  const [showURLDialog, setShowURLDialog] = useState(false);
+  const [ingestedSources, setIngestedSources] = useState<IngestedSource[]>([]);
+  const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([]);
+  const [showSourcesPanel, setShowSourcesPanel] = useState(false);
+
   // ── Initialize sessionStorage on mount ──────────────────────────────
   React.useEffect(() => {
     // If no current session, create one
@@ -107,6 +117,28 @@ export default function Home() {
       sessionStorage.createSession(`Chat - ${new Date().toLocaleTimeString()}`);
     }
   }, [sessionStorage.isLoaded, sessionStorage]);
+
+  // ── Source management handlers (non-message related) ────────────────────────
+  const handleToggleSource = useCallback((sourceId: string) => {
+    setSelectedSourceIds(prev => 
+      prev.includes(sourceId) 
+        ? prev.filter(id => id !== sourceId)
+        : [...prev, sourceId]
+    );
+  }, []);
+
+  const handleRemoveSource = useCallback((sourceId: string) => {
+    setIngestedSources(prev => prev.filter(s => s.sourceId !== sourceId));
+    setSelectedSourceIds(prev => prev.filter(id => id !== sourceId));
+  }, []);
+
+  const handleSelectAllSources = useCallback(() => {
+    setSelectedSourceIds(ingestedSources.map(s => s.sourceId));
+  }, [ingestedSources]);
+
+  const handleClearAllSources = useCallback(() => {
+    setSelectedSourceIds([]);
+  }, []);
 
   // ── Reset for new query ────────────────────────────────────────────
   const handleReset = useCallback(() => {
@@ -192,6 +224,45 @@ export default function Home() {
       return newMessages;
     });
   }, []);
+
+  // ── PDF/URL Ingestion handlers (after addMessage defined) ──────────────────
+  const handlePDFUploadComplete = useCallback((sourceId: string, title: string, chunkCount: number) => {
+    const newSource: IngestedSource = {
+      sourceId,
+      title,
+      type: 'pdf',
+      chunkCount,
+      timestamp: new Date().toISOString(),
+    };
+    setIngestedSources(prev => [...prev, newSource]);
+    setSelectedSourceIds(prev => [...prev, sourceId]);
+    setShowSourcesPanel(true);
+    
+    // Add system message to chat
+    addMessage({
+      role: 'system',
+      content: `✓ PDF uploaded: "${title}" (${chunkCount} chunks created)`,
+    });
+  }, [addMessage]);
+
+  const handleURLIngestComplete = useCallback((sourceId: string, title: string, chunkCount: number) => {
+    const newSource: IngestedSource = {
+      sourceId,
+      title,
+      type: 'url',
+      chunkCount,
+      timestamp: new Date().toISOString(),
+    };
+    setIngestedSources(prev => [...prev, newSource]);
+    setSelectedSourceIds(prev => [...prev, sourceId]);
+    setShowSourcesPanel(true);
+    
+    // Add system message to chat
+    addMessage({
+      role: 'system',
+      content: `✓ URL ingested: "${title}" (${chunkCount} chunks created)`,
+    });
+  }, [addMessage]);
 
   // ── Shared SSE callbacks ───────────────────────────────────────────
   const makeCallbacks = useCallback(() => {
@@ -730,6 +801,38 @@ export default function Home() {
                 </div>
               </div>
 
+              {/* Sources panel toggle */}
+              {ingestedSources.length > 0 && (
+                <div className="px-4 py-2 border-b border-[#2A2A2A] flex items-center justify-between">
+                  <button
+                    onClick={() => setShowSourcesPanel(!showSourcesPanel)}
+                    className="text-sm text-[#4F46E5] hover:text-[#6366F1] font-medium flex items-center gap-2"
+                  >
+                    <FileText className="w-4 h-4" />
+                    {showSourcesPanel ? 'Hide' : 'Show'} Sources ({ingestedSources.length})
+                  </button>
+                  {selectedSourceIds.length > 0 && (
+                    <span className="text-xs text-[#A0A0A0]">
+                      {selectedSourceIds.length} selected for research
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Sources panel */}
+              {showSourcesPanel && ingestedSources.length > 0 && (
+                <div className="border-b border-[#2A2A2A] bg-[#0D0D0D]" style={{ height: '300px' }}>
+                  <IngestedSourcesList
+                    sources={ingestedSources}
+                    selectedSourceIds={selectedSourceIds}
+                    onToggleSource={handleToggleSource}
+                    onRemoveSource={handleRemoveSource}
+                    onSelectAll={handleSelectAllSources}
+                    onClearAll={handleClearAllSources}
+                  />
+                </div>
+              )}
+
               {/* Action bar - sits above input */}
               <ActionBar
                 selectedActions={selectedActions}
@@ -742,47 +845,49 @@ export default function Home() {
               <RoundedChatInput
                 onSend={(message) => {
                   // Smart action routing based on selected actions
+                  // IMPORTANT: Do NOT block message sending if PDF/URL action is selected
+                  // Instead, the user sends their message, and they can upload PDFs/URLs separately
+                  
+                  // Get source IDs to pass to research
+                  const sourceIds = selectedSourceIds;
+                  
+                  // Route based on selected actions
                   if (selectedActions.includes('deep-research')) {
                     // Deep research mode - enable web search if also selected
-                    handleReport(message, [], 'deep', selectedActions.includes('web-search'));
+                    handleReport(message, sourceIds, 'deep', selectedActions.includes('web-search'));
                   } 
                   else if (selectedActions.includes('web-search')) {
                     // Web search mode - quick answer with web augmentation
-                    handleAnswer(message, []);
+                    handleAnswer(message, sourceIds);
                   }
-                  else if (selectedActions.includes('analyze-pdf')) {
-                    // PDF analysis - treat as web search for now (user should upload PDF separately)
-                    handleAnswer(message, []);
-                  }
-                  else if (selectedActions.includes('paste-url')) {
-                    // URL analysis - treat as web search for now
-                    handleAnswer(message, []);
-                  }
-                  else if (selectedActions.includes('flashcards')) {
-                    // If no actions selected but flashcards button is visible, generate from existing report
-                    if (reportContent && reportId) {
-                      handleFlashcards();
-                    } else {
-                      // If no report exists, treat as normal chat
-                      handleAnswer(message, []);
-                    }
-                  }
-                  else {
+                  else if (selectedActions.length === 0) {
                     // No actions selected = normal LLM chat (unanswered question)
                     // Send directly to LLM without research mode
-                    handleAnswer(message, []);
+                    handleAnswer(message, sourceIds);
+                  }
+                  else {
+                    // If only PDF/URL/flashcards selected (no research), treat as normal chat
+                    handleAnswer(message, sourceIds);
                   }
                 }}
-                onAttach={() => {
-                  // Handle file attachment - TODO: implement file upload
-                  console.log('Attach clicked');
+                onAttachPDF={() => {
+                  // Show PDF upload dialog
+                  setShowPDFDialog(true);
+                }}
+                onAttachURL={() => {
+                  // Show URL ingest dialog
+                  setShowURLDialog(true);
                 }}
                 isLoading={isRunning}
                 placeholder={
                   selectedActions.includes('deep-research') 
                     ? 'Ask a research question...'
                     : selectedActions.includes('web-search')
-                    ? 'Search the web...'
+                    ? 'Search the web (with sources)...'
+                    : selectedActions.includes('analyze-pdf')
+                    ? 'Ask about PDFs (upload via paperclip icon)...'
+                    : selectedActions.includes('paste-url')
+                    ? 'Ask about URLs (paste URL via link icon)...'
                     : 'Ask anything...'
                 }
                 selectedActions={selectedActions}
@@ -800,6 +905,20 @@ export default function Home() {
           onClose={() => setCanvasReportId(null)}
         />
       )}
+
+      {/* PDF Upload Dialog */}
+      <PDFUploadDialog
+        isOpen={showPDFDialog}
+        onClose={() => setShowPDFDialog(false)}
+        onUploadComplete={handlePDFUploadComplete}
+      />
+
+      {/* URL Ingest Dialog */}
+      <URLIngestDialog
+        isOpen={showURLDialog}
+        onClose={() => setShowURLDialog(false)}
+        onIngestComplete={handleURLIngestComplete}
+      />
     </div>
   );
 }

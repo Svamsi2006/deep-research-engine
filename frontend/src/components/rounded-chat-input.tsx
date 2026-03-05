@@ -1,11 +1,12 @@
 "use client";
 
 import React, { useState, useRef, KeyboardEvent } from "react";
-import { Send, Paperclip } from "lucide-react";
+import { Send, Paperclip, Link2 } from "lucide-react";
 
 interface RoundedChatInputProps {
   onSend: (message: string) => void;
-  onAttach?: () => void;
+  onAttachPDF?: () => void;
+  onAttachURL?: () => void;
   isLoading?: boolean;
   placeholder?: string;
   selectedActions?: string[];
@@ -13,7 +14,8 @@ interface RoundedChatInputProps {
 
 export default function RoundedChatInput({
   onSend,
-  onAttach,
+  onAttachPDF,
+  onAttachURL,
   isLoading = false,
   placeholder = "Ask anything...",
   selectedActions = [],
@@ -93,15 +95,29 @@ export default function RoundedChatInput({
             focus-within:border-[#4F46E5] focus-within:shadow-lg focus-within:shadow-[#4F46E5]/20
           `}
         >
-          {/* Attach button */}
-          {onAttach && (
+          {/* PDF Attach button */}
+          {onAttachPDF && (
             <button
-              onClick={onAttach}
+              onClick={onAttachPDF}
               disabled={isLoading}
               className="p-2 text-[#A0A0A0] hover:text-white hover:bg-[#2A2A2A] rounded-full transition-colors disabled:opacity-50"
-              aria-label="Attach file"
+              aria-label="Upload PDF"
+              title="Upload PDF"
             >
               <Paperclip className="w-5 h-5" />
+            </button>
+          )}
+
+          {/* URL Attach button */}
+          {onAttachURL && (
+            <button
+              onClick={onAttachURL}
+              disabled={isLoading}
+              className="p-2 text-[#A0A0A0] hover:text-white hover:bg-[#2A2A2A] rounded-full transition-colors disabled:opacity-50"
+              aria-label="Paste URL"
+              title="Paste URL"
+            >
+              <Link2 className="w-5 h-5" />
             </button>
           )}
 
